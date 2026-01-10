@@ -23,7 +23,7 @@ export default defineConfig({
       name: 'logyMf',
       filename: 'remoteEntry.js',
       exposes: {
-        './Login': './App.vue'
+        './Login': './src/App.js'
       },
       shared: ['vue']
     })
