@@ -1,11 +1,6 @@
 import { createApp } from 'vue'
-import AppComponent from './App.js';
-import LoginCard  from './components/LoginCardContent/LoginCard.vue'
+import App from './App.vue'
+import router from './router'
+import './style.css'
 
-const app = createApp({data() {return {}},methods: {},mounted() {},watch: {}});
-
-
-app.component('app-component', AppComponent);
-app.component('login-card', LoginCard);
-
-app.mount('#app');
+createApp(App).use(router).mount('#app')
