@@ -14,7 +14,9 @@ static PLANTILLAS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::ne
 struct DatosCliente {
     nombre: String,
     telefono: String,
+    #[serde(rename = "fotoBase64")]
     foto_base64: String,
+    #[serde(rename = "templateHuella")]
     template_huella: String,
 }
 
