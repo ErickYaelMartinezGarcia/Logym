@@ -4,9 +4,9 @@ import Registro from './views/Registro.vue'
 import Dashboard from './views/Dashboard.vue'
 
 const rutas = [
-  { path: '/', component: CheckIn },
-  { path: '/registro', component: Registro },
-  { path: '/dashboard', component: Dashboard }
+  { path: '/', name: 'Check-in', component: CheckIn },
+  { path: '/registro', name: 'Nuevo miembro', component: Registro },
+  { path: '/dashboard', name: 'Resumen', component: Dashboard }
 ]
 
 const router = createRouter({

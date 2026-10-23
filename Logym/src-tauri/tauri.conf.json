@@ -7,7 +7,7 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "GYM OS",
+    "productName": "VIRTUS GYM",
     "version": "0.1.0"
   },
   "tauri": {
@@ -16,7 +16,7 @@
     },
     "windows": [
       {
-        "title": "GYM OS",
+        "title": "VIRTUS GYM",
         "width": 1280,
         "height": 800,
         "resizable": true
