@@ -1,73 +1,28 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/tauri'
 import { useRouter } from 'vue-router'
+import AppShell from '../components/AppShell.vue'
 import { inicializarBaseDeDatos } from '../db'
 
 const router = useRouter()
-const mensaje = ref('Coloca tu huella')
+const mensaje = ref('Coloca tu huella para validar tu acceso')
 const cargando = ref(false)
-
-/**
- * Inicializa la base de datos cuando abre la pantalla de check-in.
- */
-onMounted(async () => {
-  try {
-    await inicializarBaseDeDatos()
-  } catch (error) {
-    mensaje.value = 'No se pudo abrir gym.db'
-  }
-})
-
-/**
- * Captura una huella usando el comando de Tauri para validar acceso.
- */
 async function capturarHuella() {
-  try {
-    cargando.value = true
-    const template = await invoke('capturar_huella')
-    mensaje.value = `Huella capturada: ${template.slice(0, 18)}...`
-  } catch (error) {
-    mensaje.value = 'Error al capturar huella'
-  } finally {
-    cargando.value = false
-  }
+  try { cargando.value = true; const template = await invoke('capturar_huella'); mensaje.value = `Lectura recibida: ${template.slice(0, 18)}...` } catch (error) { mensaje.value = 'No se pudo leer el dispositivo biométrico.' } finally { cargando.value = false }
 }
-
-/**
- * Abre la pantalla de registro para dar de alta clientes.
- */
-function irARegistro() {
-  router.push('/registro')
-}
-
-/**
- * Abre el dashboard para revisar métricas del gimnasio.
- */
-function irADashboard() {
-  router.push('/dashboard')
-}
+onMounted(async () => { try { await inicializarBaseDeDatos() } catch (error) { mensaje.value = 'No se pudo abrir la base de datos local.' } })
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center px-6">
-    <div class="w-full max-w-xl bg-[#141414] border border-[#1F1F1F] rounded-[24px] shadow-2xl backdrop-blur-xl p-10 text-center space-y-8">
-      <h1 class="text-3xl font-semibold text-[#C41E3A]">GYM OS</h1>
-      <div class="mx-auto w-40 h-40 rounded-full bg-[#8B0000] animate-pulse flex items-center justify-center shadow-2xl">
-        <span class="text-white font-semibold">Huella</span>
-      </div>
-      <p class="text-lg text-gray-200">{{ mensaje }}</p>
-      <button
-        class="w-full py-4 rounded-2xl bg-[#8B0000] hover:bg-[#A00000] transition font-semibold disabled:opacity-50"
-        @click="capturarHuella"
-        :disabled="cargando"
-      >
-        {{ cargando ? 'Capturando...' : 'Capturar huella' }}
-      </button>
-      <div class="grid grid-cols-2 gap-4">
-        <button class="py-3 rounded-2xl bg-[#1C1C1C] border border-[#1F1F1F] hover:bg-[#2A2A2A]" @click="irARegistro">Ir a Registro</button>
-        <button class="py-3 rounded-2xl bg-[#1C1C1C] border border-[#1F1F1F] hover:bg-[#2A2A2A]" @click="irADashboard">Ir a Dashboard</button>
-      </div>
+  <AppShell>
+    <div class="checkin-layout">
+      <section class="checkin-copy"><p class="eyebrow">CONTROL DE ACCESO / 00</p><h1 class="page-title">Listo para<br><span style="color:#ee2046">entrenar?</span></h1><p class="muted" style="max-width:390px; margin-top:17px; line-height:1.6">Identifica tu huella y entra a VIRTUS sin filas, sin tarjetas y sin complicaciones.</p><div class="neon-line" style="max-width:230px; margin-top:30px"></div></section>
+      <section class="surface checkin-card"><div class="fingerprint-orb"><div class="fingerprint-ring ring-one"></div><div class="fingerprint-ring ring-two"></div><span>⌁</span></div><p class="checkin-message">{{ mensaje }}</p><button class="primary-button" :disabled="cargando" @click="capturarHuella">{{ cargando ? 'Leyendo dispositivo...' : 'Leer mi huella' }} <span>→</span></button><button class="text-button" @click="router.push('/registro')">¿Nuevo miembro? Regístralo aquí</button></section>
     </div>
-  </div>
+  </AppShell>
 </template>
+
+<style scoped>
+.checkin-layout { display:grid; grid-template-columns:1fr minmax(320px,430px); align-items:center; gap:12%; min-height:calc(100vh - 160px); }.checkin-card { padding:42px 38px; text-align:center; }.fingerprint-orb { position:relative; display:grid; place-items:center; width:180px; height:180px; margin:0 auto 26px; border:1px solid #5a1b2a; border-radius:50%; color:#ee2046; background:radial-gradient(circle,rgba(238,32,70,.2),rgba(238,32,70,.02) 58%,transparent 60%); box-shadow:0 0 60px rgba(238,32,70,.14); }.fingerprint-orb span { font-size:78px; line-height:1; transform:rotate(90deg); text-shadow:0 0 25px #ee2046; }.fingerprint-ring { position:absolute; border:1px solid rgba(238,32,70,.27); border-radius:50%; }.ring-one { inset:14px; }.ring-two { inset:29px; }.checkin-message { color:#c8cbd0; font-size:14px; margin:0 0 22px; }.text-button { margin-top:19px; border:0; color:#8e949e; background:transparent; font-size:12px; }.text-button:hover { color:#ee2046; }@media(max-width:800px){.checkin-layout{grid-template-columns:1fr; min-height:auto; gap:35px}.checkin-copy{text-align:center}.checkin-copy .neon-line{margin-left:auto;margin-right:auto}.checkin-card{padding:30px 22px}}
+</style>
