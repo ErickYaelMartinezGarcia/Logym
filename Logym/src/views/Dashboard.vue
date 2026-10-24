@@ -1,9 +1,11 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppShell from '../components/AppShell.vue'
-import { inicializarBaseDeDatos, listarClientes, obtenerMetricasDashboard } from '../db'
+import { inicializarBaseDeDatos, listarClientes, listarClientesMembresia, obtenerMetricasDashboard } from '../db'
 
 const clientes = ref([])
+const clientesMembresia = ref([])
+const busqueda = ref('')
 const metricas = ref([
   { titulo: 'Miembros activos', valor: '0', trend: '+8.4%', icon: '◉' },
   { titulo: 'Entradas de hoy', valor: '0', trend: 'En tiempo real', icon: '↗' },
@@ -11,10 +13,42 @@ const metricas = ref([
   { titulo: 'Huellas activas', valor: '0', trend: 'Biometría lista', icon: '⌁' }
 ])
 
+function formatearFecha(valor) {
+  if (!valor) return 'Sin fecha'
+  const soloFecha = String(valor).slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(soloFecha)) return valor
+  const [anio, mes, dia] = soloFecha.split('-')
+  return `${dia}/${mes}/${anio}`
+}
+
+function etiquetaEstado(estado) {
+  if (estado === 'vencida') return 'Vencida'
+  if (estado === 'por_vencer') return 'Por vencer'
+  if (estado === 'sin_fecha') return 'Sin fecha'
+  return 'Activa'
+}
+
+const clientesFiltrados = computed(() => {
+  const termino = busqueda.value.trim().toLowerCase()
+  if (!termino) return clientesMembresia.value
+  return clientesMembresia.value.filter((cliente) => {
+    const nombre = String(cliente.nombre || '').toLowerCase()
+    const telefono = String(cliente.telefono || '').toLowerCase()
+    const id = String(cliente.id || '')
+    return nombre.includes(termino) || telefono.includes(termino) || id.includes(termino)
+  })
+})
+
+const alertasMembresia = computed(() => clientesMembresia.value.filter((cliente) => cliente.estado_membresia === 'vencida' || cliente.estado_membresia === 'por_vencer'))
+
+const membresiasVencidas = computed(() => clientesMembresia.value.filter((cliente) => cliente.estado_membresia === 'vencida').length)
+const membresiasPorVencer = computed(() => clientesMembresia.value.filter((cliente) => cliente.estado_membresia === 'por_vencer').length)
+
 onMounted(async () => {
   try {
     await inicializarBaseDeDatos()
     clientes.value = await listarClientes()
+    clientesMembresia.value = await listarClientesMembresia()
     const datos = await obtenerMetricasDashboard()
     metricas.value[0].valor = String(datos.total_clientes || 0)
     metricas.value[1].valor = String(datos.asistencias_hoy || 0)
@@ -40,6 +74,39 @@ onMounted(async () => {
       </article>
     </section>
 
+    <section class="surface" style="padding:24px; margin-bottom:20px">
+      <div style="display:flex; justify-content:space-between; align-items:end; gap:14px; margin-bottom:16px">
+        <div><p class="eyebrow">MEMBRESÍAS CRÍTICAS</p><h2 style="margin:7px 0 0; font-size:20px">Vencidas y próximas a caducar</h2></div>
+        <div class="alert-counters">
+          <span class="counter-pill danger">Vencidas: {{ membresiasVencidas }}</span>
+          <span class="counter-pill warning">Próximas 7 días: {{ membresiasPorVencer }}</span>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px">
+          <thead>
+            <tr class="muted">
+              <th style="padding:13px 8px">MIEMBRO</th>
+              <th style="padding:13px 8px">TELÉFONO</th>
+              <th style="padding:13px 8px">INICIO</th>
+              <th style="padding:13px 8px">FIN</th>
+              <th style="padding:13px 8px">ESTADO</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="cliente in alertasMembresia" :key="`alerta-${cliente.id}`" style="border-top:1px solid #292d33">
+              <td style="padding:14px 8px"><strong>{{ cliente.nombre }}</strong></td>
+              <td class="muted" style="padding:14px 8px">{{ cliente.telefono || 'Sin teléfono' }}</td>
+              <td class="muted" style="padding:14px 8px">{{ formatearFecha(cliente.fecha_inicio_membresia) }}</td>
+              <td class="muted" style="padding:14px 8px">{{ formatearFecha(cliente.fecha_fin_membresia) }}</td>
+              <td style="padding:14px 8px"><span class="status-chip" :class="`status-${cliente.estado_membresia}`">{{ etiquetaEstado(cliente.estado_membresia) }}</span></td>
+            </tr>
+            <tr v-if="!alertasMembresia.length"><td colspan="5" class="muted" style="padding:23px 8px; text-align:center">No hay membresías vencidas o por vencer en los próximos 7 días.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <div class="dashboard-columns" style="display:grid; grid-template-columns:minmax(0,1.4fr) minmax(280px,.8fr); gap:18px">
       <section class="surface" style="padding:24px">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px"><div><p class="eyebrow">BASE DE MIEMBROS</p><h2 style="margin:7px 0 0; font-size:20px">Altas recientes</h2></div><span class="muted" style="font-size:12px">Últimos 20</span></div>
@@ -48,9 +115,56 @@ onMounted(async () => {
       </section>
       <section class="surface" style="padding:24px"><p class="eyebrow">RITMO SEMANAL</p><h2 style="margin:7px 0 4px; font-size:20px">Asistencias</h2><p class="muted" style="font-size:12px; margin-top:0">Actividad estimada de los últimos 7 días</p><div style="height:190px; display:flex; align-items:end; gap:9px; margin-top:25px"><div v-for="(height,index) in [36,52,44,71,57,86,63]" :key="index" :style="{height: `${height}%`}" style="flex:1; border-radius:7px 7px 2px 2px; background:linear-gradient(#ee2046,#85142e); box-shadow:0 0 12px rgba(238,32,70,.2)"></div></div><div style="display:flex; justify-content:space-between; color:#747a84; font-size:10px; margin-top:10px"><span>LUN</span><span>MAR</span><span>MIÉ</span><span>JUE</span><span>VIE</span><span>SÁB</span><span>DOM</span></div></section>
     </div>
+
+    <section class="surface" style="padding:24px; margin-top:18px">
+      <div style="display:flex; justify-content:space-between; align-items:end; gap:14px; margin-bottom:14px">
+        <div><p class="eyebrow">BUSCADOR DE CLIENTES</p><h2 style="margin:7px 0 0; font-size:20px">Registro y vencimiento de membresía</h2></div>
+        <input v-model="busqueda" class="search-input" type="search" placeholder="Buscar por nombre, teléfono o ID" />
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px">
+          <thead>
+            <tr class="muted">
+              <th style="padding:13px 8px">MIEMBRO</th>
+              <th style="padding:13px 8px">REGISTRO</th>
+              <th style="padding:13px 8px">INICIO</th>
+              <th style="padding:13px 8px">FIN</th>
+              <th style="padding:13px 8px">ESTADO</th>
+              <th style="padding:13px 8px">DÍAS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="cliente in clientesFiltrados" :key="`busqueda-${cliente.id}`" style="border-top:1px solid #292d33">
+              <td style="padding:14px 8px"><strong>{{ cliente.nombre }}</strong><div class="muted" style="font-size:11px; margin-top:3px">ID #{{ cliente.id }} · {{ cliente.telefono || 'Sin teléfono' }}</div></td>
+              <td class="muted" style="padding:14px 8px">{{ formatearFecha(cliente.fecha_registro) }}</td>
+              <td class="muted" style="padding:14px 8px">{{ formatearFecha(cliente.fecha_inicio_membresia) }}</td>
+              <td class="muted" style="padding:14px 8px">{{ formatearFecha(cliente.fecha_fin_membresia) }}</td>
+              <td style="padding:14px 8px"><span class="status-chip" :class="`status-${cliente.estado_membresia}`">{{ etiquetaEstado(cliente.estado_membresia) }}</span></td>
+              <td class="muted" style="padding:14px 8px">{{ cliente.estado_membresia === 'sin_fecha' ? '-' : cliente.dias_restantes }}</td>
+            </tr>
+            <tr v-if="!clientesFiltrados.length"><td colspan="6" class="muted" style="padding:23px 8px; text-align:center">No se encontraron clientes con ese criterio.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
   </AppShell>
 </template>
 
 <style scoped>
-@media (max-width: 800px) { .dashboard-head { align-items: start !important; flex-direction: column; } .dashboard-columns { grid-template-columns: 1fr !important; } }
+.alert-counters { display:flex; gap:9px; flex-wrap:wrap; }
+.counter-pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:700; }
+.counter-pill.danger { color:#ff7a93; background:#3c1721; border:1px solid #6e1d30; }
+.counter-pill.warning { color:#f6d873; background:#352b10; border:1px solid #60501b; }
+.status-chip { display:inline-flex; align-items:center; padding:5px 9px; border-radius:999px; font-size:11px; font-weight:700; border:1px solid transparent; }
+.status-vencida { color:#ff7a93; border-color:#6e1d30; background:#3c1721; }
+.status-por_vencer { color:#f6d873; border-color:#60501b; background:#352b10; }
+.status-activa { color:#6de1a9; border-color:#1b5e44; background:#103024; }
+.status-sin_fecha { color:#9aa1ab; border-color:#414750; background:#22262d; }
+.search-input { min-width:270px; border:1px solid #343941; border-radius:10px; padding:10px 12px; color:#fff; background:#111317; }
+.search-input:focus { outline:0; border-color:#ee2046; box-shadow:0 0 0 3px rgba(238,32,70,.12); }
+@media (max-width: 800px) {
+  .dashboard-head { align-items: start !important; flex-direction: column; }
+  .dashboard-columns { grid-template-columns: 1fr !important; }
+  .search-input { width:100%; min-width:0; }
+}
 </style>

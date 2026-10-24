@@ -26,6 +26,44 @@ export async function guardarClienteEnBaseDeDatos(datosCliente) {
 }
 
 /**
+ * Regresa clientes con fechas de membresía y estado de vencimiento.
+ */
+export async function listarClientesMembresia() {
+  try {
+    return await invoke('listar_clientes_membresia')
+  } catch (error) {
+    console.error('Error al listar clientes con membresía:', error)
+    throw error
+  }
+}
+
+/**
+ * Busca un cliente por el template de huella capturado.
+ */
+export async function buscarClientePorHuella(template) {
+  try {
+    return await invoke('buscar_cliente_por_huella', { template })
+  } catch (error) {
+    console.error('Error al buscar cliente por huella:', error)
+    throw error
+  }
+}
+
+/**
+ * Renueva membresía y devuelve el estado actualizado del cliente.
+ */
+export async function renovarMembresiaCliente(clienteId, dias, monto) {
+  try {
+    return await invoke('renovar_membresia', {
+      datos: { clienteId, dias, monto }
+    })
+  } catch (error) {
+    console.error('Error al renovar membresía:', error)
+    throw error
+  }
+}
+
+/**
  * Regresa la lista de clientes para la tabla del dashboard.
  */
 export async function listarClientes() {

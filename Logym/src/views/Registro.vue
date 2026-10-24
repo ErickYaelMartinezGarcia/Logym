@@ -6,6 +6,9 @@ import { inicializarBaseDeDatos, guardarClienteEnBaseDeDatos } from '../db'
 
 const nombre = ref('')
 const telefono = ref('')
+const fechaRegistro = ref('')
+const fechaInicioMembresia = ref('')
+const fechaFinMembresia = ref('')
 const template1 = ref('')
 const template2 = ref('')
 const fotoBase64 = ref('')
@@ -20,6 +23,12 @@ const tipoMensaje = ref('neutral')
 function mostrarMensaje(texto, tipo = 'neutral') {
   mensaje.value = texto
   tipoMensaje.value = tipo
+}
+
+function sumarDias(fechaISO, dias) {
+  const fecha = new Date(`${fechaISO}T00:00:00`)
+  fecha.setDate(fecha.getDate() + dias)
+  return fecha.toISOString().slice(0, 10)
 }
 
 async function iniciarCamara() {
@@ -76,10 +85,29 @@ async function guardarCliente() {
     mostrarMensaje('Completa el nombre y las dos capturas de huella.', 'error')
     return
   }
+  if (!fechaRegistro.value || !fechaInicioMembresia.value || !fechaFinMembresia.value) {
+    mostrarMensaje('Captura las fechas de registro, inicio y fin de membresía.', 'error')
+    return
+  }
+  if (fechaFinMembresia.value < fechaInicioMembresia.value) {
+    mostrarMensaje('La fecha de fin no puede ser anterior al inicio de membresía.', 'error')
+    return
+  }
   try {
-    const clienteId = await guardarClienteEnBaseDeDatos({ nombre: nombre.value.trim(), telefono: telefono.value.trim(), fotoBase64: fotoBase64.value, templateHuella: template1.value })
+    const clienteId = await guardarClienteEnBaseDeDatos({
+      nombre: nombre.value.trim(),
+      telefono: telefono.value.trim(),
+      fechaRegistro: fechaRegistro.value,
+      fechaInicioMembresia: fechaInicioMembresia.value,
+      fechaFinMembresia: fechaFinMembresia.value,
+      fotoBase64: fotoBase64.value,
+      templateHuella: template1.value
+    })
     await invoke('guardar_template', { clienteId: String(clienteId), template: template1.value })
     nombre.value = ''; telefono.value = ''; template1.value = ''; template2.value = ''; fotoBase64.value = ''
+    fechaRegistro.value = new Date().toISOString().slice(0, 10)
+    fechaInicioMembresia.value = fechaRegistro.value
+    fechaFinMembresia.value = sumarDias(fechaInicioMembresia.value, 30)
     mostrarMensaje('Miembro registrado. Ya puede utilizar el check-in.', 'success')
   } catch (error) {
     console.error('Error al guardar miembro:', error)
@@ -88,6 +116,10 @@ async function guardarCliente() {
 }
 
 onMounted(async () => {
+  const hoy = new Date().toISOString().slice(0, 10)
+  fechaRegistro.value = hoy
+  fechaInicioMembresia.value = hoy
+  fechaFinMembresia.value = sumarDias(hoy, 30)
   try { await inicializarBaseDeDatos() } catch (error) { mostrarMensaje('No se pudo inicializar la base de datos local.', 'error') }
 })
 onBeforeUnmount(detenerCamara)
@@ -101,6 +133,11 @@ onBeforeUnmount(detenerCamara)
         <p class="eyebrow">DATOS BÁSICOS</p><h2 style="margin:7px 0 22px; font-size:21px">Información del miembro</h2>
         <label class="field-label">Nombre completo<input v-model="nombre" type="text" placeholder="Ej. Alex Rivera" /></label>
         <label class="field-label">Teléfono <span class="muted">(opcional)</span><input v-model="telefono" type="tel" placeholder="+52 55 0000 0000" /></label>
+        <div class="date-grid">
+          <label class="field-label">Fecha de registro<input v-model="fechaRegistro" type="date" /></label>
+          <label class="field-label">Inicio de membresía<input v-model="fechaInicioMembresia" type="date" /></label>
+          <label class="field-label">Fin de membresía<input v-model="fechaFinMembresia" type="date" /></label>
+        </div>
         <div class="capture-row"><button class="capture-card" :class="{ done: template1 }" @click="capturarHuella(1)"><span class="capture-icon">01</span><span><strong>{{ template1 ? 'Huella guardada' : 'Primera huella' }}</strong><small>{{ template1 ? 'Captura completa' : 'Coloca el dedo en el lector' }}</small></span><b>›</b></button><button class="capture-card" :class="{ done: template2 }" @click="capturarHuella(2)"><span class="capture-icon">02</span><span><strong>{{ template2 ? 'Huella confirmada' : 'Confirmación' }}</strong><small>{{ template2 ? 'Captura completa' : 'Repite la misma huella' }}</small></span><b>›</b></button></div>
         <button class="primary-button" @click="guardarCliente">Guardar miembro <span>→</span></button>
         <p class="feedback" :class="`feedback--${tipoMensaje}`">{{ mensaje }}</p>
@@ -120,6 +157,7 @@ onBeforeUnmount(detenerCamara)
 .field-label { display:block; color:#9da3ad; font-size:12px; margin-bottom:16px; }
 .field-label input { display:block; width:100%; margin-top:8px; padding:13px 14px; border:1px solid #343941; border-radius:11px; outline:0; color:#fff; background:#111317; transition:.2s; }
 .field-label input:focus { border-color:#ee2046; box-shadow:0 0 0 3px rgba(238,32,70,.12); }
+.date-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:6px; }
 .capture-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:25px 0 17px; }
 .capture-card { display:flex; align-items:center; gap:10px; min-width:0; padding:13px 11px; border:1px solid #343941; border-radius:12px; color:#fff; text-align:left; background:#16191e; transition:.2s; }
 .capture-card:hover, .capture-card.done { border-color:#ee2046; }
@@ -131,5 +169,5 @@ onBeforeUnmount(detenerCamara)
 .feedback { min-height:18px; margin:14px 0 0; font-size:12px; }.feedback--error { color:#ff6d86; }.feedback--success { color:#55d996; }.feedback--neutral { color:#9298a2; }
 .camera-status { color:#858b95; font-size:9px; font-weight:800; letter-spacing:.1em; }.camera-status i { display:inline-block; width:6px; height:6px; margin-right:6px; border-radius:50%; background:#777; }.camera-status.active { color:#55d996; }.camera-status.active i { background:#55d996; box-shadow:0 0 9px #55d996; }
 .camera-frame { position:relative; display:grid; place-items:center; min-height:270px; margin-top:20px; overflow:hidden; border:1px solid #343941; border-radius:14px; background:#0c0e11; }.camera-frame video { display:block; width:100%; max-height:320px; object-fit:cover; transform:scaleX(-1); }.camera-placeholder { display:grid; place-items:center; gap:9px; color:#757b85; text-align:center; }.camera-placeholder span { color:#ee2046; font-size:52px; line-height:1; }.camera-placeholder small { font-size:11px; }.camera-actions { display:grid; grid-template-columns:1fr auto; gap:9px; margin-top:12px; }.photo-preview { width:100%; margin-top:14px; border-radius:12px; border:1px solid #ee2046; }
-@media (max-width:800px) { .registration-grid { grid-template-columns:1fr !important; }.capture-row { grid-template-columns:1fr; } }
+@media (max-width:800px) { .registration-grid { grid-template-columns:1fr !important; }.capture-row { grid-template-columns:1fr; }.date-grid { grid-template-columns:1fr; } }
 </style>
