@@ -24,6 +24,9 @@
     ],
     "security": {
       "csp": null
+    },
+    "bundle": {
+      "identifier": "com.virtusgym.desktop"
     }
   }
 }

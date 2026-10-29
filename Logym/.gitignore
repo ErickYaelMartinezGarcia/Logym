@@ -21,3 +21,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+#tauri /rust 
+src-tauri/target
+
+#bd
+*.db
+*.sqlite

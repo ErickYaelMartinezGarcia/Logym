@@ -6,9 +6,9 @@ const route = useRoute()
 const menuAbierto = ref(false)
 
 const enlaces = [
+   { to: '/dashboard', label: 'Dashboard', caption: 'Actividad del gimnasio', icon: 'grid' },
   { to: '/', label: 'Check-in', caption: 'Acceso de miembros', icon: 'fingerprint' },
-  { to: '/registro', label: 'Nuevo miembro', caption: 'Alta y biometría', icon: 'user-plus' },
-  { to: '/dashboard', label: 'Resumen', caption: 'Actividad del gimnasio', icon: 'grid' }
+  { to: '/registro', label: 'Nuevo miembro', caption: 'Alta y biometría', icon: 'user-plus' }
 ]
 
 function cerrarMenu() {

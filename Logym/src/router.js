@@ -6,7 +6,7 @@ import Dashboard from './views/Dashboard.vue'
 const rutas = [
   { path: '/', name: 'Check-in', component: CheckIn },
   { path: '/registro', name: 'Nuevo miembro', component: Registro },
-  { path: '/dashboard', name: 'Resumen', component: Dashboard }
+  { path: '/dashboard', name: 'Dashboard', component: Dashboard }
 ]
 
 const router = createRouter({
