@@ -3,6 +3,7 @@ import AppShell from '../components/AppShell.vue'
 import { useCheckIn } from '../composables/useCheckIn'
 
 const {
+  tiposMembresia, tipoMembresiaId,
   router, mensaje, estadoCheckin, cargando, procesandoRenovacion, clienteDetectado, modalAbierta,
   confirmandoRenovacion, lectorActivo, formatearFecha, etiquetaEstado, diasRestantes,
   capturarAcceso, cerrarModal, solicitarRenovacion, renovar
@@ -72,8 +73,13 @@ const {
                   <button v-if="!confirmandoRenovacion" class="secondary-button" @click="solicitarRenovacion">Renovar
                     membresía</button>
                   <div v-else class="renewal-confirmation">
+                    <label>Plan para renovar (sin inscripción)
+                      <select v-model="tipoMembresiaId" class="renewal-select">
+                        <option v-for="plan in tiposMembresia" :key="plan.id" :value="String(plan.id)">{{ plan.nombre }} — {{ (plan.precio_centavos / 100).toLocaleString("es-MX", {style:"currency",currency:"MXN"}) }}</option>
+                      </select>
+                    </label>
                     <strong>¿Autorizar renovación?</strong>
-                    <p>Se registrarán 30 días a partir de hoy.</p>
+                    <p>Se aplicará la duración del plan seleccionado, sin cobrar inscripción.</p>
                     <div class="renewal-actions">
                       <button class="text-button text-button--secondary" :disabled="procesandoRenovacion"
                         @click="confirmandoRenovacion = false">Cancelar</button>
@@ -412,6 +418,8 @@ const {
   font-size: 12px;
   line-height: 1.5;
 }
+
+.renewal-select { display:block; width:100%; padding:10px; margin:8px 0; color:white; background:#171a1f; border:1px solid #60501b; border-radius:8px; }
 
 .renewal-confirmation {
   padding: 13px;
