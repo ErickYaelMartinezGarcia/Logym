@@ -100,7 +100,7 @@ impl SecuGenController {
             let mut image = vec![0u8; image_len];
             let code = (api.get_image_ex)(manager, image.as_mut_ptr(), 2000, std::ptr::null_mut(), 40);
             if code == 54 { // TIMEOUT - no hay dedo
-               return Err("SGFPM_GetImageEx: 54".to_string()); // como antes, para que no te rompa todo lo demás
+               return Ok(None); // Tiempo de espera normal: no se colocó ningún dedo
             }
             check_sdk(code, "SGFPM_GetImageEx")?;
             let mut template = [0u8; SG_TEMPLATE_SIZE];
