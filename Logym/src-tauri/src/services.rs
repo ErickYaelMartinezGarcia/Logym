@@ -70,8 +70,8 @@ pub fn buscar_cliente_por_huella(app: &AppHandle) -> Result<Option<ClienteCheckI
     let id_opt = controller.identificar_template(&conn, &captured)?;
 
     if let Some(id) = id_opt {
-        let cliente = conn.query_row("SELECT id, nombre, COALESCE(telefono, ''), COALESCE(telefono_emergencia, ''), COALESCE(foto_base64, ''), COALESCE(fecha_registro, ''), COALESCE(fecha_inicio_membresia, ''), COALESCE(fecha_fin_membresia, ''), CAST(julianday(date(fecha_fin_membresia)) - julianday(date('now','localtime')) AS INTEGER) FROM clientes WHERE id=?1 AND activo=1", params![id],
-            |r| { let dias: i64 = r.get::<_, Option<i64>>(8)?.unwrap_or(-1); let fecha_inicio: String = r.get(6)?; let hoy = chrono::Local::now().format("%Y-%m-%d").to_string(); Ok(ClienteCheckIn{ id: r.get(0)?, nombre: r.get(1)?, telefono: r.get(2)?, telefono_emergencia: r.get(3)?, foto_base64: r.get(4)?, fecha_registro: r.get(5)?, fecha_inicio_membresia: r.get(6)?, fecha_fin_membresia: r.get(7)?, estado_membresia: (if fecha_inicio > hoy { "pendiente" } else if dias < 0 { "vencida" } else if dias <= 7 { "por_vencer" } else { "activa" }).to_string(), dias_restantes: dias }) }
+        let cliente = conn.query_row("SELECT id, nombre, COALESCE(telefono, ''), COALESCE(telefono_emergencia, ''), COALESCE(foto_base64, ''), COALESCE(fecha_registro, ''), COALESCE(fecha_inicio_membresia, ''), COALESCE(fecha_fin_membresia, ''), CAST(julianday(date(fecha_fin_membresia)) - julianday(date('now','localtime')) AS INTEGER), COALESCE((SELECT concepto_membresia FROM pagos WHERE cliente_id=clientes.id ORDER BY id DESC LIMIT 1),'Sin plan registrado') FROM clientes WHERE id=?1 AND activo=1", params![id],
+            |r| { let dias: i64 = r.get::<_, Option<i64>>(8)?.unwrap_or(-1); let fecha_inicio: String = r.get(6)?; let hoy = chrono::Local::now().format("%Y-%m-%d").to_string(); Ok(ClienteCheckIn{ tipo_membresia: r.get(9)?, id: r.get(0)?, nombre: r.get(1)?, telefono: r.get(2)?, telefono_emergencia: r.get(3)?, foto_base64: r.get(4)?, fecha_registro: r.get(5)?, fecha_inicio_membresia: r.get(6)?, fecha_fin_membresia: r.get(7)?, estado_membresia: (if fecha_inicio > hoy { "pendiente" } else if dias < 0 { "vencida" } else if dias <= 7 { "por_vencer" } else { "activa" }).to_string(), dias_restantes: dias }) }
         ).map_err(|e| e.to_string())?;
         Ok(Some(cliente))
     } else {
@@ -92,11 +92,12 @@ pub fn renovar_membresia(app: &AppHandle, datos: DatosRenovacion) -> Result<Clie
 /// Consulta un expediente completo desde SQLite para evitar datos obsoletos en Vue.
 fn obtener_cliente_checkin(conn: &rusqlite::Connection, id: i64) -> Result<ClienteCheckIn, String> {
     conn.query_row(
-        "SELECT id, nombre, COALESCE(telefono,''), COALESCE(telefono_emergencia,''), COALESCE(foto_base64,''), COALESCE(fecha_registro,''), COALESCE(fecha_inicio_membresia,''), COALESCE(fecha_fin_membresia,''), CAST(julianday(date(fecha_fin_membresia))-julianday(date('now','localtime')) AS INTEGER) FROM clientes WHERE id=?1 AND activo=1",
+        "SELECT id, nombre, COALESCE(telefono,''), COALESCE(telefono_emergencia,''), COALESCE(foto_base64,''), COALESCE(fecha_registro,''), COALESCE(fecha_inicio_membresia,''), COALESCE(fecha_fin_membresia,''), CAST(julianday(date(fecha_fin_membresia))-julianday(date('now','localtime')) AS INTEGER), COALESCE((SELECT concepto_membresia FROM pagos WHERE cliente_id=clientes.id ORDER BY id DESC LIMIT 1),'Sin plan registrado') FROM clientes WHERE id=?1 AND activo=1",
         params![id],
         |r| {
             let dias = r.get::<_, Option<i64>>(8)?.unwrap_or(-1); let fecha_inicio: String = r.get(6)?; let hoy = chrono::Local::now().format("%Y-%m-%d").to_string();
             Ok(ClienteCheckIn {
+                tipo_membresia: r.get(9)?,
                 id: r.get(0)?, nombre: r.get(1)?, telefono: r.get(2)?,
                 telefono_emergencia: r.get(3)?, foto_base64: r.get(4)?,
                 fecha_registro: r.get(5)?, fecha_inicio_membresia: r.get(6)?,
