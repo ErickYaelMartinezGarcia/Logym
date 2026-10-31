@@ -1,4 +1,4 @@
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import {
   inicializarBaseDeDatos,
   listarClientes,
@@ -69,7 +69,26 @@ export function useDashboard() {
     }
   }
 
-  onMounted(() => cargarDashboard().catch((error) => console.error('Error al cargar dashboard:', error)))
+  let refresco = null
+  let enCurso = false
+  async function actualizar() {
+    if (enCurso || document.hidden) return
+    enCurso = true
+    try { await cargarDashboard() }
+    catch (error) { console.error('Error al cargar dashboard:', error) }
+    finally { enCurso = false }
+  }
+  onMounted(() => {
+    actualizar()
+    window.addEventListener('focus', actualizar)
+    document.addEventListener('visibilitychange', actualizar)
+    refresco = window.setInterval(actualizar, 15000)
+  })
+  onBeforeUnmount(() => {
+    window.removeEventListener('focus', actualizar)
+    document.removeEventListener('visibilitychange', actualizar)
+    if (refresco) window.clearInterval(refresco)
+  })
 
   return {
     clientes, busqueda, clientesFiltrados, resumenAsistencias, metricas,
