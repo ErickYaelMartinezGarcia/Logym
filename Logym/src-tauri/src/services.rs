@@ -48,6 +48,16 @@ pub fn guardar_cliente(app: &AppHandle, mut datos: DatosCliente) -> Result<i64, 
     if datos.fecha_inicio_membresia.is_empty() { datos.fecha_inicio_membresia = chrono::Local::now().format("%Y-%m-%d").to_string(); }
     if datos.fecha_fin_membresia.is_empty() { datos.fecha_fin_membresia = (chrono::Local::now() + chrono::Duration::days(30)).format("%Y-%m-%d").to_string(); }
     let conn = database::abrir_db(app)?;
+    let plan_id = datos.tipo_membresia_id.ok_or("Selecciona un tipo de membresía")?;
+    let meses: i64 = conn.query_row(
+        "SELECT duracion_meses FROM tipos_membresia WHERE id=?1 AND activo=1",
+        params![plan_id], |r| r.get(0)
+    ).map_err(|_| "La membresía seleccionada no está disponible".to_string())?;
+    let inicio = chrono::NaiveDate::parse_from_str(&datos.fecha_inicio_membresia, "%Y-%m-%d")
+        .map_err(|_| "Fecha inicial inválida")?;
+    let fin = inicio.checked_add_months(chrono::Months::new(meses as u32))
+        .ok_or("Duración de membresía inválida")?;
+    datos.fecha_fin_membresia = fin.format("%Y-%m-%d").to_string();
     repositories::guardar_cliente(&conn, datos)
 }
 
