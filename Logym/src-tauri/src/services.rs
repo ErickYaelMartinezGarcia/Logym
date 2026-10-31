@@ -85,7 +85,7 @@ pub fn registrar_asistencia(app: &AppHandle, cliente_id: i64) -> Result<String, 
 }
 pub fn renovar_membresia(app: &AppHandle, datos: DatosRenovacion) -> Result<ClienteCheckIn, String> {
     let conn = database::abrir_db(app)?;
-    repositories::renovar_membresia(&conn, datos.cliente_id)?;
+    repositories::renovar_membresia(&conn, datos.cliente_id, datos.tipo_membresia_id.ok_or("Selecciona el tipo de membresía para renovar")?)?;
     obtener_cliente_checkin(&conn, datos.cliente_id)
 }
 
