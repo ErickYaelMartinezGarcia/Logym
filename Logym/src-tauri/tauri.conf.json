@@ -12,7 +12,10 @@
   },
   "tauri": {
     "allowlist": {
-      "all": true
+      "all": false,
+      "event": {
+        "all": true
+      }
     },
     "windows": [
       {
@@ -25,11 +28,13 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' http://localhost:5173; img-src 'self' data: blob: asset: http://asset.localhost; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     },
     "bundle": {
       "identifier": "com.virtusgym.desktop",
-      "resources": ["bin/**/*"]
+      "resources": [
+        "bin/**/*"
+      ]
     }
   }
 }
