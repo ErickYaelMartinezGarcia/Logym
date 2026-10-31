@@ -34,11 +34,11 @@ const {
           @click="router.push('/registro')">¿Nuevo miembro? Regístralo aquí</button>
         <div v-if="modalAbierta && clienteDetectado" class="cliente-modal-backdrop" @click.self="cerrarModal">
           <div class="cliente-modal" :class="{
-            'cliente-modal--valid': clienteDetectado.estado_membresia === 'activa',
+            'cliente-modal--valid': ['activa', 'por_vencer'].includes(clienteDetectado.estado_membresia),
             'cliente-modal--expired': clienteDetectado.estado_membresia === 'vencida'
           }" role="dialog" aria-modal="true" aria-label="Información del cliente">
             <button class="modal-close" aria-label="Cerrar información del cliente" @click="cerrarModal">×</button>
-            <div v-if="clienteDetectado.estado_membresia === 'activa'" class="access-approved"><span>✓</span> ACCESO
+            <div v-if="['activa', 'por_vencer'].includes(clienteDetectado.estado_membresia)" class="access-approved"><span>✓</span> ACCESO
               VÁLIDO</div>
             <div class="panel-head">
               <div v-if="clienteDetectado.foto_base64" class="cliente-foto-frame">
