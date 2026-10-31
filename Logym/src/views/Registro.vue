@@ -22,8 +22,8 @@ const {
         <p class="eyebrow">DATOS BÁSICOS</p><h2 class="form-panel__title">Información del miembro</h2>
         <label class="field-label">Nombre completo<input v-model="nombre" type="text" placeholder="Ej. Alex Rivera" /></label>
         <div class="phone-grid">
-          <label class="field-label">Teléfono del cliente <span>(opcional)</span><input v-model="telefono" type="tel" placeholder="+52 55 0000 0000" /></label>
-          <label class="field-label">Teléfono de emergencia <span>(opcional)</span><input v-model="telefonoEmergencia" type="tel" placeholder="+52 55 0000 0000" /></label>
+          <label class="field-label">Teléfono del cliente <span>(opcional)</span><input v-model="telefono" type="tel" pattern="[0-9]*" maxlength="10" placeholder="+52 55 0000 0000" /></label>
+          <label class="field-label">Teléfono de emergencia <span>(opcional)</span><input v-model="telefonoEmergencia" type="tel" pattern="[0-9]*" maxlength="10" placeholder="+52 55 0000 0000" /></label>
         </div>
         <div class="date-grid">
           <label class="field-label">Fecha de registro<input v-model="fechaRegistro" type="date" /></label>
