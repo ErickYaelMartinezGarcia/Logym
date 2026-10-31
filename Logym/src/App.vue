@@ -15,6 +15,7 @@ function cerrarAviso() {
 function presentarResultado(resultado) {
   if (resultado === 'registrada') return { titulo: 'Acceso autorizado', detalle: 'Asistencia registrada correctamente.', tipo: 'exito', simbolo: '✓' }
   if (resultado === 'duplicada') return { titulo: 'Asistencia ya registrada', detalle: 'Este cliente ya registró su entrada hoy. No se duplicó la asistencia.', tipo: 'aviso', simbolo: '!' }
+  if (resultado === 'membresia_pendiente') return { titulo: 'Membresía pendiente', detalle: 'La fecha de inicio aún no llega. Consulta la fecha de inicio del cliente.', tipo: 'aviso', simbolo: '!' }
   if (resultado === 'membresia_vencida') return { titulo: 'Membresía vencida', detalle: 'Renueva la membresía para permitir el acceso.', tipo: 'error', simbolo: '×' }
   const detalle = String(resultado || 'Error desconocido').replace(/^error:\s*/i, '').trim()
   if (detalle.includes('membresía no vigente')) return { titulo: 'Membresía no vigente', detalle: 'La fecha de inicio todavía no llega o la membresía ya terminó.', tipo: 'error', simbolo: '×' }
