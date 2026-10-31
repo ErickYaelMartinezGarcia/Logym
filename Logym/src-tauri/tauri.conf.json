@@ -12,10 +12,7 @@
   },
   "tauri": {
     "allowlist": {
-      "all": false,
-      "event": {
-        "all": true
-      }
+      "all": false
     },
     "windows": [
       {
