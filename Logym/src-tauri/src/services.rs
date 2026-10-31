@@ -12,7 +12,24 @@ pub fn inicializar_db(app: &AppHandle) -> Result<String, String> {
 }
 
 pub fn guardar_cliente(app: &AppHandle, mut datos: DatosCliente) -> Result<i64, String> {
-    if datos.nombre.trim().is_empty() { return Err("Nombre vacío".into()) }
+    datos.nombre = datos.nombre.trim().to_string();
+    if datos.nombre.is_empty() || datos.nombre.chars().count() > 120 || datos.nombre.chars().any(char::is_control) {
+        return Err("Nombre inválido".into());
+    }
+    for telefono in [&datos.telefono, &datos.telefono_emergencia] {
+        if telefono.len() > 25 || !telefono.chars().all(|ch| ch.is_ascii_digit() || "+- ()".contains(ch)) {
+            return Err("Teléfono inválido".into());
+        }
+    }
+    if datos.template_huella.len() != 800 || !datos.template_huella.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("Plantilla biométrica inválida".into());
+    }
+    if datos.foto_base64.len() > 3_000_000 {
+        return Err("Fotografía demasiado grande".into());
+    }
+    if !datos.foto_base64.is_empty() && !["data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,"].iter().any(|p| datos.foto_base64.starts_with(p)) {
+        return Err("Formato de fotografía inválido".into());
+    }
     if datos.fecha_registro.is_empty() { datos.fecha_registro = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(); }
     if datos.fecha_inicio_membresia.is_empty() { datos.fecha_inicio_membresia = chrono::Local::now().format("%Y-%m-%d").to_string(); }
     if datos.fecha_fin_membresia.is_empty() { datos.fecha_fin_membresia = (chrono::Local::now() + chrono::Duration::days(30)).format("%Y-%m-%d").to_string(); }
