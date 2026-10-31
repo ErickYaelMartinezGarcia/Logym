@@ -36,16 +36,16 @@ export function useDashboard() {
         return [cliente.nombre, cliente.telefono, cliente.telefono_emergencia, cliente.id]
           .some((valor) => String(valor || '').toLowerCase().includes(termino))
       })
-      .slice(0, 2)
+      .slice(0, 20)
   })
 
   const alertasMembresia = computed(() => clientesMembresia.value
-    .filter(({ estado_membresia }) => ['vencida', 'por_vencer'].includes(estado_membresia)))
+    .filter(({ estado_membresia, activo }) => activo && ['vencida', 'por_vencer'].includes(estado_membresia)))
 
   const membresiasVencidas = computed(() => clientesMembresia.value
-    .filter(({ estado_membresia }) => estado_membresia === 'vencida').length)
+    .filter(({ estado_membresia, activo }) => activo && estado_membresia === 'vencida').length)
   const membresiasPorVencer = computed(() => clientesMembresia.value
-    .filter(({ estado_membresia }) => estado_membresia === 'por_vencer').length)
+    .filter(({ estado_membresia, activo }) => activo && estado_membresia === 'por_vencer').length)
 
   async function cargarDashboard() {
     await inicializarBaseDeDatos()
