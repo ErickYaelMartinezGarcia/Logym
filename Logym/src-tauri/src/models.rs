@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 pub struct DatosCliente {
+    #[serde(default, rename = "tipoMembresiaId")]
+    pub tipo_membresia_id: Option<i64>,
+    #[serde(default, rename = "incluirInscripcion")]
+    pub incluir_inscripcion: bool,
     pub nombre: String,
     pub telefono: String,
     #[serde(default, rename = "telefonoEmergencia")]
@@ -20,6 +24,8 @@ pub struct DatosCliente {
 
 #[derive(Debug, Deserialize)]
 pub struct DatosRenovacion {
+    #[serde(default, rename = "tipoMembresiaId")]
+    pub tipo_membresia_id: Option<i64>,
     #[serde(rename = "clienteId", alias = "cliente_id")]
     pub cliente_id: i64,
 }
