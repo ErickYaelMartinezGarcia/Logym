@@ -51,6 +51,7 @@ const {
                   <small>ID #{{ clienteDetectado.id }} · Cliente: {{ clienteDetectado.telefono || 'Sin teléfono'
                     }}</small>
                   <small>Emergencia: {{ clienteDetectado.telefono_emergencia || 'Sin teléfono' }}</small>
+                  <small>Tipo de membresía: {{ clienteDetectado.tipo_membresia || 'Sin plan registrado' }}</small>
                   <span class="estado-chip" :class="`estado-${clienteDetectado.estado_membresia}`">{{
                     etiquetaEstado(clienteDetectado.estado_membresia) }}</span>
                 </div>
