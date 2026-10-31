@@ -68,3 +68,29 @@ pub fn obtener_metricas(conexion: &Connection) -> Result<Metricas, String> {
     ).unwrap_or_else(|_| "Sin datos".to_string());
     Ok(Metricas { total_clientes, asistencias_hoy, nuevos_semana, huella_activas, asistencias_ultimos_7_dias, dia_mas_concurrido, hora_mayor_afluencia })
 }
+
+/// Modifica únicamente datos administrativos; la huella queda intacta.
+pub fn actualizar_cliente(conn: &Connection, id: i64, datos: ActualizacionCliente) -> Result<(), String> {
+    if datos.nombre.trim().is_empty() { return Err("El nombre es obligatorio".into()); }
+    if datos.fecha_fin_membresia < datos.fecha_inicio_membresia { return Err("La fecha final debe ser posterior a la inicial".into()); }
+    let changed = conn.execute("UPDATE clientes SET nombre=?1, telefono=?2, telefono_emergencia=?3, fecha_inicio_membresia=?4, fecha_fin_membresia=?5 WHERE id=?6",
+        params![datos.nombre.trim(), datos.telefono.trim(), datos.telefono_emergencia.trim(), datos.fecha_inicio_membresia, datos.fecha_fin_membresia, id]).map_err(|e| e.to_string())?;
+    if changed == 0 { return Err("Cliente no encontrado".into()); }
+    Ok(())
+}
+
+/// Desactivar revoca acceso biométrico, sin borrar el expediente.
+pub fn establecer_cliente_activo(conn: &Connection, id: i64, activo: bool) -> Result<(), String> {
+    let changed = conn.execute("UPDATE clientes SET activo=?1 WHERE id=?2", params![activo as i32, id]).map_err(|e| e.to_string())?;
+    if changed == 0 { return Err("Cliente no encontrado".into()); }
+    Ok(())
+}
+
+/// Eliminación irreversible de datos personales y biométricos.
+/// Las tablas dependientes se eliminan por ON DELETE CASCADE dentro de la transacción.
+pub fn eliminar_cliente_definitivamente(conn: &mut Connection, id: i64) -> Result<(), String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let changed = tx.execute("DELETE FROM clientes WHERE id=?1", params![id]).map_err(|e| e.to_string())?;
+    if changed == 0 { return Err("Cliente no encontrado".into()); }
+    tx.commit().map_err(|e| e.to_string())
+}
