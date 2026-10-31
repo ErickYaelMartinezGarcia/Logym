@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event'
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import {
   inicializarBaseDeDatos,
@@ -88,7 +89,6 @@ export function useDashboard() {
   onMounted(async () => {
     montado = true
     try {
-      const { listen } = await import('@tauri-apps/api/event')
       dejarDeEscuchar = await listen('logym://datos-actualizados', actualizar)
     } catch (error) { console.error('Error al suscribirse a métricas:', error) }
     actualizar()
