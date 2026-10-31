@@ -59,6 +59,15 @@ export function useRegistroCliente() {
       mostrarMensaje('La fecha de fin no puede ser anterior al inicio de membresía.', 'error')
       return
     }
+    const telefonoValido = (valor) => valor.trim().length <= 25 && /^[0-9+() -]*$/.test(valor.trim())
+    if (nombre.value.trim().length > 120 || /[\\x00-\\x1f\\x7f]/.test(nombre.value)) {
+      mostrarMensaje('El nombre debe tener máximo 120 caracteres y no contener controles.', 'error')
+      return
+    }
+    if (!telefonoValido(telefono.value) || !telefonoValido(telefonoEmergencia.value)) {
+      mostrarMensaje('Introduce teléfonos válidos de máximo 25 caracteres.', 'error')
+      return
+    }
     try {
       const huellasCoinciden = await compararHuella(template1.value, template2.value)
       if (!huellasCoinciden) {
