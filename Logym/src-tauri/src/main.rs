@@ -8,7 +8,7 @@ mod secugen;
 mod services;
 
 use commands::{
-    buscar_cliente_por_huella, capturar_huella, guardar_cliente, inicializar_db,
+    buscar_cliente_por_huella, capturar_huella, comparar_huella, check_in, guardar_cliente, inicializar_db,
     listar_clientes, listar_clientes_membresia, obtener_metricas, registrar_asistencia,
     renovar_membresia,
 };
@@ -58,6 +58,8 @@ fn main() {
             renovar_membresia,
             obtener_metricas,
             capturar_huella,
+            comparar_huella,
+            check_in,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
