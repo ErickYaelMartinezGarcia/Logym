@@ -162,7 +162,6 @@ impl SecuGenController {
             Ok(None)
         }
     }
-    pub fn cargar_todos_en_ram(&self, _conexion: &Connection) -> Result<String, String> { Ok("ok".into()) }
 }
 
 pub fn resolve_bin_path(resource_path: &Path) -> Result<PathBuf, String> {
