@@ -68,3 +68,24 @@ pub fn activar_licencia(app: AppHandle, licencia_texto: String) -> Result<(), St
     crate::lector_worker::iniciar(app.clone());
     Ok(())
 }
+
+#[tauri::command]
+pub fn listar_tipos_membresia(app: AppHandle) -> Result<Vec<crate::membresias::TipoMembresia>, String> {
+    licencia::verificar(&app)?;
+    let conn = crate::database::abrir_db(&app)?;
+    crate::membresias::listar(&conn)
+}
+
+#[tauri::command]
+pub fn obtener_precio_inscripcion(app: AppHandle) -> Result<i64, String> {
+    licencia::verificar(&app)?;
+    let conn = crate::database::abrir_db(&app)?;
+    crate::membresias::inscripcion(&conn)
+}
+
+#[tauri::command]
+pub fn resumen_ingresos(app: AppHandle, periodo: String) -> Result<crate::membresias::ResumenIngresos, String> {
+    licencia::verificar(&app)?;
+    let conn = crate::database::abrir_db(&app)?;
+    crate::membresias::ingresos(&conn, &periodo)
+}
