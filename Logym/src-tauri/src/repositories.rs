@@ -24,14 +24,28 @@ pub fn listar_clientes(conexion: &Connection) -> Result<Vec<ClienteTabla>, Strin
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
+/// Lista clientes activos e inactivos para su administración.
 pub fn listar_clientes_membresia(conexion: &Connection) -> Result<Vec<ClienteMembresia>, String> {
-    let mut stmt = conexion.prepare("SELECT id, nombre, telefono, fecha_fin_membresia, CAST(julianday(fecha_fin_membresia) - julianday('now') AS INTEGER) as dias FROM clientes ORDER BY dias ASC").map_err(|e| e.to_string())?;
+    let mut stmt = conexion.prepare(
+        "SELECT id, nombre, COALESCE(telefono,''), COALESCE(fecha_fin_membresia,''), CAST(julianday(fecha_fin_membresia) - julianday(date('now','localtime')) AS INTEGER), activo, COALESCE(telefono_emergencia,''), COALESCE(fecha_registro,''), COALESCE(fecha_inicio_membresia,'') FROM clientes ORDER BY nombre"
+    ).map_err(|e| e.to_string())?;
     let rows = stmt.query_map([], |r| {
-        let dias: i64 = r.get(4)?;
-        let estado = if dias < 0 { "vencida".to_string() } else if dias <= 3 { "por_vencer".to_string() } else { "activa".to_string() };
-        Ok(ClienteMembresia{ id: r.get(0)?, nombre: r.get(1)?, telefono: r.get(2)?, fecha_fin_membresia: r.get(3)?, dias_restantes: dias, estado })
+        let dias: Option<i64> = r.get(4)?;
+        let estado = match dias {
+            None => "sin_fecha",
+            Some(n) if n < 0 => "vencida",
+            Some(n) if n <= 7 => "por_vencer",
+            _ => "activa"
+        }.to_string();
+        Ok(ClienteMembresia {
+            id: r.get(0)?, nombre: r.get(1)?, telefono: r.get(2)?,
+            fecha_fin_membresia: r.get(3)?, dias_restantes: dias.unwrap_or(0),
+            estado, activo: r.get::<_, i64>(5)? != 0,
+            telefono_emergencia: r.get(6)?, fecha_registro: r.get(7)?,
+            fecha_inicio_membresia: r.get(8)?
+        })
     }).map_err(|e| e.to_string())?;
-    Ok(rows.filter_map(|r| r.ok()).collect())
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
 pub fn registrar_asistencia(conexion: &Connection, cliente_id: i64) -> Result<String, String> {
