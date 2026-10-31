@@ -62,5 +62,9 @@ pub fn estado_licencia(app: AppHandle) -> bool { licencia::verificar(&app).is_ok
 
 #[tauri::command]
 pub fn activar_licencia(app: AppHandle, licencia_texto: String) -> Result<(), String> {
-    licencia::activar(&app, licencia_texto)
+    licencia::activar(&app, licencia_texto)?;
+    let conn = crate::database::abrir_db(&app)?;
+    crate::database::inicializar_esquema(&conn)?;
+    crate::lector_worker::iniciar(app.clone());
+    Ok(())
 }
