@@ -30,6 +30,20 @@ pub fn guardar_cliente(app: &AppHandle, mut datos: DatosCliente) -> Result<i64, 
     if !datos.foto_base64.is_empty() && !["data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,"].iter().any(|p| datos.foto_base64.starts_with(p)) {
         return Err("Formato de fotografía inválido".into());
     }
+    if !datos.fecha_registro.is_empty()
+        && chrono::NaiveDate::parse_from_str(&datos.fecha_registro, "%Y-%m-%d").is_err()
+        && chrono::NaiveDateTime::parse_from_str(&datos.fecha_registro, "%Y-%m-%d %H:%M:%S").is_err() {
+        return Err("Fecha de registro inválida".into());
+    }
+    for fecha in [&datos.fecha_inicio_membresia, &datos.fecha_fin_membresia] {
+        if !fecha.is_empty() && (fecha.len() != 10 || chrono::NaiveDate::parse_from_str(fecha, "%Y-%m-%d").is_err()) {
+            return Err("Fecha de membresía inválida".into());
+        }
+    }
+    if !datos.fecha_inicio_membresia.is_empty() && !datos.fecha_fin_membresia.is_empty()
+        && datos.fecha_fin_membresia < datos.fecha_inicio_membresia {
+        return Err("El fin de membresía no puede ser anterior al inicio".into());
+    }
     if datos.fecha_registro.is_empty() { datos.fecha_registro = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(); }
     if datos.fecha_inicio_membresia.is_empty() { datos.fecha_inicio_membresia = chrono::Local::now().format("%Y-%m-%d").to_string(); }
     if datos.fecha_fin_membresia.is_empty() { datos.fecha_fin_membresia = (chrono::Local::now() + chrono::Duration::days(30)).format("%Y-%m-%d").to_string(); }
