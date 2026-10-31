@@ -4,6 +4,7 @@ import { useRegistroCliente } from '../composables/useRegistroCliente'
 
 const registro = useRegistroCliente()
 const {
+  tiposMembresia, tipoMembresiaId, incluirInscripcion, precioInscripcion,
   nombre, telefono, fechaRegistro, fechaInicioMembresia, fechaFinMembresia,
   telefonoEmergencia,
   template1, template2, mensaje, tipoMensaje, videoRef, canvasRef, fotoBase64,
@@ -30,6 +31,23 @@ const {
           <label class="field-label">Inicio de membresía<input v-model="fechaInicioMembresia" type="date" /></label>
           <label class="field-label">Fin de membresía<input v-model="fechaFinMembresia" type="date" /></label>
         </div>
+        <div class="date-grid">
+          <label class="field-label">Tipo de membresía
+            <select v-model="tipoMembresiaId" class="plan-select" required>
+              <option value="" disabled>Selecciona un plan</option>
+              <option v-for="plan in tiposMembresia" :key="plan.id" :value="String(plan.id)">{{ plan.nombre }} — {{ (plan.precio_centavos / 100).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) }}</option>
+            </select>
+          </label>
+          <label class="field-label">¿Incluir inscripción?
+            <select v-model="incluirInscripcion" class="plan-select">
+              <option :value="true">Sí</option>
+              <option :value="false">No</option>
+            </select>
+          </label>
+          <div class="field-label">Total a cobrar
+            <strong class="total-cobro">{{ (((tiposMembresia.find(p => String(p.id) === tipoMembresiaId)?.precio_centavos || 0) + (incluirInscripcion ? precioInscripcion : 0)) / 100).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) }}</strong>
+          </div>
+        </div>
         <div class="capture-row"><button class="capture-card" :class="{ done: template1 }" @click="capturarHuellaCliente(1)"><span class="capture-icon">01</span><span><strong>{{ template1 ? 'Huella guardada' : 'Primera huella' }}</strong><small>{{ template1 ? 'Captura completa' : 'Coloca el dedo en el lector' }}</small></span><b>›</b></button><button class="capture-card" :class="{ done: template2 }" @click="capturarHuellaCliente(2)"><span class="capture-icon">02</span><span><strong>{{ template2 ? 'Huella confirmada' : 'Confirmación' }}</strong><small>{{ template2 ? 'Captura completa' : 'Repite la misma huella' }}</small></span><b>›</b></button></div>
         <button class="primary-button" @click="guardarCliente">Guardar miembro <span>→</span></button>
         <p class="feedback" :class="`feedback--${tipoMensaje}`">{{ mensaje }}</p>
@@ -49,6 +67,7 @@ const {
 .field-label { display:block; color:#9da3ad; font-size:12px; margin-bottom:16px; }
 .field-label span { color:#6f7680; font-size:10px; }
 .phone-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.plan-select, .total-cobro { display:block; width:100%; margin-top:8px; padding:13px; border:1px solid #343941; border-radius:11px; color:#fff; background:#111317; }
 .field-label input { display:block; width:100%; margin-top:8px; padding:13px 14px; border:1px solid #343941; border-radius:11px; outline:0; color:#fff; background:#111317; transition:.2s; }
 .field-label input:focus { border-color:#ee2046; box-shadow:0 0 0 3px rgba(238,32,70,.12); }
 .date-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:6px; }
