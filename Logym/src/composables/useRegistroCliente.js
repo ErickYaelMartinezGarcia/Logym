@@ -19,10 +19,17 @@ export function useRegistroCliente() {
     tipoMensaje.value = tipo
   }
 
+  function fechaLocal(date = new Date()) {
+    const anio = date.getFullYear()
+    const mes = String(date.getMonth() + 1).padStart(2, '0')
+    const dia = String(date.getDate()).padStart(2, '0')
+    return `${anio}-${mes}-${dia}`
+  }
+
   function sumarDias(fechaISO, dias) {
     const fecha = new Date(`${fechaISO}T00:00:00`)
     fecha.setDate(fecha.getDate() + dias)
-    return fecha.toISOString().slice(0, 10)
+    return fechaLocal(fecha)
   }
 
   const camera = useCamera(mostrarMensaje)
@@ -74,7 +81,7 @@ export function useRegistroCliente() {
       template1.value = ''
       template2.value = ''
       camera.fotoBase64.value = ''
-      fechaRegistro.value = new Date().toISOString().slice(0, 10)
+      fechaRegistro.value = fechaLocal()
       fechaInicioMembresia.value = fechaRegistro.value
       fechaFinMembresia.value = sumarDias(fechaInicioMembresia.value, 30)
       mostrarMensaje('Miembro registrado. Ya puede utilizar el check-in.', 'success')
@@ -86,7 +93,7 @@ export function useRegistroCliente() {
 
   onMounted(async () => {
     await pausarLectorGlobal(true)
-    const hoy = new Date().toISOString().slice(0, 10)
+    const hoy = fechaLocal()
     fechaRegistro.value = hoy
     fechaInicioMembresia.value = hoy
     fechaFinMembresia.value = sumarDias(hoy, 30)
