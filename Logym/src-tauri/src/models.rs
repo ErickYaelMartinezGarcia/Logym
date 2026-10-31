@@ -48,6 +48,13 @@ pub struct ClienteCheckIn {
     pub id: i64,
     pub nombre: String,
     pub telefono: String,
+    pub telefono_emergencia: String,
+    pub foto_base64: String,
+    pub fecha_registro: String,
+    pub fecha_inicio_membresia: String,
+    pub fecha_fin_membresia: String,
+    pub estado_membresia: String,
+    pub dias_restantes: i64,
 }
 
 #[derive(Debug, Serialize)]
