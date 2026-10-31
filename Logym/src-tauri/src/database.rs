@@ -12,7 +12,6 @@ fn ruta_db(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("No se pudo crear {}: {}", directorio_datos.display(), e))?;
 
     let ruta_db = directorio_datos.join("gym.db");
-    println!("[DB] Ruta: {}", ruta_db.display());
 
     if !ruta_db.exists() {
         let legacy = PathBuf::from("gym.db");
@@ -26,7 +25,6 @@ fn ruta_db(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 pub fn abrir_db(app: &tauri::AppHandle) -> Result<Connection, String> {
     let ruta = ruta_db(app)?;
-     println!(">>> ABRIENDO DB EN: {:?}", ruta);
     let conn = Connection::open(&ruta)
         .map_err(|e| format!("No se pudo abrir DB en {}: {}", ruta.display(), e))?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
