@@ -18,6 +18,10 @@ pub fn iniciar(app: AppHandle) {
         let mut ultimo_id: Option<i64> = None;
         let mut ultimo_instante = std::time::Instant::now() - Duration::from_secs(10);
         loop {
+            if crate::licencia::verificar(&app).is_err() {
+                std::thread::sleep(Duration::from_secs(2));
+                continue;
+            }
             if PAUSADO.load(Ordering::SeqCst) {
                 std::thread::sleep(Duration::from_millis(250));
                 continue;
