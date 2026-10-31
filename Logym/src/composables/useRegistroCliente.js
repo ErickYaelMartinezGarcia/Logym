@@ -1,5 +1,5 @@
-import { onMounted, ref } from 'vue'
-import { capturarHuella, compararHuella, guardarCliente, inicializarBaseDeDatos } from '../services/tauriApi'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { capturarHuella, compararHuella, guardarCliente, inicializarBaseDeDatos, pausarLectorGlobal } from '../services/tauriApi'
 import { useCamera } from './useCamera'
 
 export function useRegistroCliente() {
@@ -85,6 +85,7 @@ export function useRegistroCliente() {
   }
 
   onMounted(async () => {
+    await pausarLectorGlobal(true)
     const hoy = new Date().toISOString().slice(0, 10)
     fechaRegistro.value = hoy
     fechaInicioMembresia.value = hoy
@@ -95,6 +96,8 @@ export function useRegistroCliente() {
       mostrarMensaje('No se pudo inicializar la base de datos local.', 'error')
     }
   })
+
+  onBeforeUnmount(() => { pausarLectorGlobal(false).catch(console.error) })
 
   return {
     nombre, telefono, telefonoEmergencia, fechaRegistro, fechaInicioMembresia, fechaFinMembresia,
