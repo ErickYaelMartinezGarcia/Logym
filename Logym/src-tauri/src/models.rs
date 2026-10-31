@@ -42,7 +42,7 @@ pub struct ClienteMembresia {
     pub fecha_inicio_membresia: String,
     pub nombre: String,
     pub telefono: String,
-    pub estado: String,
+    pub estado_membresia: String,
     pub dias_restantes: i64,
     pub fecha_fin_membresia: String,
 }
