@@ -31,7 +31,10 @@ pub fn listar_clientes_membresia(conexion: &Connection) -> Result<Vec<ClienteMem
     ).map_err(|e| e.to_string())?;
     let rows = stmt.query_map([], |r| {
         let dias: Option<i64> = r.get(4)?;
+        let fecha_inicio: String = r.get(8)?;
+        let hoy = chrono::Local::now().format("%Y-%m-%d").to_string();
         let estado = match dias {
+            _ if fecha_inicio > hoy => "pendiente",
             None => "sin_fecha",
             Some(n) if n < 0 => "vencida",
             Some(n) if n <= 7 => "por_vencer",
@@ -57,7 +60,17 @@ pub fn registrar_asistencia(conexion: &Connection, cliente_id: i64) -> Result<St
         |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?.unwrap_or(0))),
     ).map_err(|_| "Cliente no encontrado".to_string())?;
     if cliente.0 != 1 { return Err("Acceso denegado: cliente desactivado".into()); }
-    if cliente.1 != 1 { return Err("Acceso denegado: la fecha actual está fuera del periodo de membresía".into()); }
+    if cliente.1 != 1 {
+        let (inicio, fin): (String, String) = conexion.query_row(
+            "SELECT COALESCE(fecha_inicio_membresia,''), COALESCE(fecha_fin_membresia,'') FROM clientes WHERE id=?1",
+            params![cliente_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        ).map_err(|e| e.to_string())?;
+        let hoy = chrono::Local::now().format("%Y-%m-%d").to_string();
+        if inicio > hoy { return Err(format!("Membresía pendiente: comienza el {inicio}")); }
+        if fin < hoy { return Err(format!("Membresía vencida: terminó el {fin}")); }
+        return Err("Acceso denegado: fechas de membresía inválidas".into());
+    }
 
     let n = conexion.execute(
         "INSERT INTO asistencias (cliente_id, fecha_hora)
