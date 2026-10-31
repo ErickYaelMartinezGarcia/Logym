@@ -44,11 +44,13 @@ export function useCheckIn() {
       estadoCheckin.value = 'success'
       mensaje.value = `Asistencia registrada: ${cliente.nombre}`
     } else if (resultado === 'duplicada') {
-      estadoCheckin.value = 'success'
-      mensaje.value = `Ya registró asistencia hoy: ${cliente.nombre}`
+      estadoCheckin.value = 'warning'
+      mensaje.value = `${cliente.nombre} ya registró asistencia hoy. No se agregó otra entrada.`
     } else {
       estadoCheckin.value = 'error'
-      mensaje.value = resultado === 'membresia_vencida' ? 'Membresía vencida. Renueva para ingresar.' : `No se registró asistencia: ${resultado}`
+      mensaje.value = resultado === 'membresia_vencida'
+        ? 'Membresía vencida. Renueva para ingresar.'
+        : `No se registró asistencia: ${String(resultado).replace(/^error:\\s*/i, '')}`
     }
   }
   async function capturarAcceso() {
