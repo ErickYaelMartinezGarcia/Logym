@@ -19,6 +19,8 @@
         "title": "VIRTUS GYM",
         "width": 1280,
         "height": 800,
+        "minWidth": 900,
+        "minHeight": 620,
         "resizable": true
       }
     ],
