@@ -59,8 +59,11 @@ pub struct ClienteCheckIn {
 
 #[derive(Debug, Serialize)]
 pub struct Metricas {
-    pub entradas_hoy: i64,
-    pub entradas_7_dias: i64,
-    pub dia_pico: String,
-    pub hora_pico: String,
+    pub total_clientes: i64,
+    pub asistencias_hoy: i64,
+    pub nuevos_semana: i64,
+    pub huella_activas: i64,
+    pub asistencias_ultimos_7_dias: i64,
+    pub dia_mas_concurrido: String,
+    pub hora_mayor_afluencia: String,
 }
