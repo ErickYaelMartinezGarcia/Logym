@@ -1,7 +1,7 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { useRouter } from 'vue-router'
-import { pausarLectorGlobal, renovarMembresia } from '../services/tauriApi'
+import { pausarLectorGlobal, renovarMembresia, listarTiposMembresia } from '../services/tauriApi'
 
 /**
  * Vista del lector global. El backend captura y registra asistencias incluso
@@ -9,6 +9,8 @@ import { pausarLectorGlobal, renovarMembresia } from '../services/tauriApi'
  */
 export function useCheckIn() {
   const router = useRouter()
+  const tiposMembresia = ref([])
+  const tipoMembresiaId = ref('')
   const mensaje = ref('Coloca tu huella para validar tu acceso')
   const estadoCheckin = ref('idle')
   const cargando = ref(false)
@@ -70,10 +72,10 @@ export function useCheckIn() {
   }
   function solicitarRenovacion() { confirmandoRenovacion.value = true }
   async function renovar() {
-    if (!clienteDetectado.value || procesandoRenovacion.value) return
+    if (!clienteDetectado.value || procesandoRenovacion.value || !tipoMembresiaId.value) return
     procesandoRenovacion.value = true
     try {
-      clienteDetectado.value = await renovarMembresia(clienteDetectado.value.id)
+      clienteDetectado.value = await renovarMembresia(clienteDetectado.value.id, Number(tipoMembresiaId.value))
       estadoCheckin.value = 'success'
       confirmandoRenovacion.value = false
       mensaje.value = `Membresía renovada para ${clienteDetectado.value.nombre}. Vigente hasta ${formatearFecha(clienteDetectado.value.fecha_fin_membresia)}.`
@@ -85,6 +87,10 @@ export function useCheckIn() {
     }
   }
   onMounted(async () => {
+    try {
+      tiposMembresia.value = await listarTiposMembresia()
+      if (tiposMembresia.value.length) tipoMembresiaId.value = String(tiposMembresia.value[0].id)
+    } catch (error) { mensaje.value = `No se pudieron cargar las membresías: ${String(error)}` }
     try { dejarDeEscuchar = await listen('logym://checkin', recibirLectura) }
     catch (error) { mensaje.value = `No se pudo escuchar el lector: ${String(error)}` }
   })
@@ -93,6 +99,7 @@ export function useCheckIn() {
     if (modalAbierta.value) pausarLectorGlobal(false).catch(console.error)
   })
   return {
+    tiposMembresia, tipoMembresiaId,
     router, mensaje, estadoCheckin, cargando, procesandoRenovacion, clienteDetectado,
     modalAbierta, confirmandoRenovacion, lectorActivo, formatearFecha, etiquetaEstado,
     diasRestantes, capturarAcceso, cerrarModal, solicitarRenovacion, renovar
