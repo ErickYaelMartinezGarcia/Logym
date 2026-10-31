@@ -27,9 +27,10 @@ export function useCheckIn() {
     return `${dia}/${mes}/${anio}`
   }
   function etiquetaEstado(estado) {
-    return { vencida: 'Membresía vencida', por_vencer: 'Membresía por vencer', activa: 'Membresía activa' }[estado] || 'Sin fecha de membresía'
+    return { pendiente: 'Membresía pendiente', vencida: 'Membresía vencida', por_vencer: 'Membresía por vencer', activa: 'Membresía activa' }[estado] || 'Sin fecha de membresía'
   }
   function diasRestantes(cliente) {
+    if (cliente.estado_membresia === 'pendiente') return `Comienza el ${formatearFecha(cliente.fecha_inicio_membresia)}`
     if (cliente.estado_membresia === 'vencida') return `Venció hace ${Math.abs(cliente.dias_restantes)} día(s)`
     if (cliente.estado_membresia === 'por_vencer') return `Vence en ${cliente.dias_restantes} día(s)`
     return `${cliente.dias_restantes} día(s) restantes`
@@ -48,9 +49,11 @@ export function useCheckIn() {
       mensaje.value = `${cliente.nombre} ya registró asistencia hoy. No se agregó otra entrada.`
     } else {
       estadoCheckin.value = 'error'
-      mensaje.value = resultado === 'membresia_vencida'
+      mensaje.value = resultado === 'membresia_pendiente'
+        ? `Membresía pendiente. Comienza el ${formatearFecha(cliente.fecha_inicio_membresia)}.`
+        : resultado === 'membresia_vencida'
         ? 'Membresía vencida. Renueva para ingresar.'
-        : `No se registró asistencia: ${String(resultado).replace(/^error:\\s*/i, '')}`
+        : `No se registró asistencia: ${String(resultado).replace(/^error:\s*/i, '')}`
     }
   }
   async function capturarAcceso() {
