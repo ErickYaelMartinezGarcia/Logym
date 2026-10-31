@@ -16,7 +16,7 @@ export function useDashboard() {
     horaMayorAfluencia: 'Sin datos'
   })
   const metricas = ref([
-    { titulo: 'Miembros activos', valor: '0', trend: '+8.4%', icon: '◉' },
+    { titulo: 'Miembros activos', valor: '0', trend: 'Clientes habilitados', icon: '◉' },
     { titulo: 'Entradas de hoy', valor: '0', trend: 'En tiempo real', icon: '↗' },
     { titulo: 'Nuevos esta semana', valor: '0', trend: 'Últimos 7 días', icon: '+' },
     { titulo: 'Huellas activas', valor: '0', trend: 'Biometría lista', icon: '⌁' }
@@ -57,7 +57,7 @@ export function useDashboard() {
     clientes.value = clientesCargados
     clientesMembresia.value = membresias
     metricas.value = [
-      { titulo: 'Miembros activos', valor: String(datos.total_clientes || 0), trend: '+8.4%', icon: '◉' },
+      { titulo: 'Miembros activos', valor: String(datos.total_clientes || 0), trend: 'Clientes habilitados', icon: '◉' },
       { titulo: 'Entradas de hoy', valor: String(datos.asistencias_hoy || 0), trend: 'En tiempo real', icon: '↗' },
       { titulo: 'Nuevos esta semana', valor: String(datos.nuevos_semana || 0), trend: 'Últimos 7 días', icon: '+' },
       { titulo: 'Huellas activas', valor: String(datos.huella_activas || 0), trend: 'Biometría lista', icon: '⌁' }
