@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import AppShell from '../components/AppShell.vue'
-import { adminConfigurado, crearPasswordAdmin, validarPasswordAdmin, listarTiposMembresia, obtenerPrecioInscripcion, guardarPlanAdmin, guardarInscripcionAdmin } from '../services/tauriApi'
+import { adminConfigurado, crearPasswordAdmin, validarPasswordAdmin, listarPlanesAdmin, obtenerPrecioInscripcion, guardarPlanAdmin, guardarInscripcionAdmin } from '../services/tauriApi'
 
 const configurado = ref(true)
 const autorizado = ref(false)
@@ -14,7 +14,7 @@ const nuevo = ref({ nombre:'', meses:1, precio_pesos:0, activo:true })
 const moneda = n => (n/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'})
 const aCentavos = n => Math.round(Number(n)*100)
 async function cargar() {
-  planes.value = (await listarTiposMembresia()).map(p => ({...p, precio_pesos:p.precio_centavos/100}))
+  planes.value = (await listarPlanesAdmin(password.value)).map(p => ({...p, precio_pesos:p.precio_centavos/100}))
   inscripcion.value = (await obtenerPrecioInscripcion())/100
 }
 async function entrar() {
