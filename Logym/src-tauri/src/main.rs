@@ -5,6 +5,7 @@ mod database;
 mod models;
 mod lector_worker;
 mod licencia;
+mod membresias;
 mod repositories;
 mod secugen;
 mod services;
@@ -53,7 +54,8 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::solicitud_licencia,
+            commands::listar_tipos_membresia, commands::obtener_precio_inscripcion, commands::resumen_ingresos,
+ commands::solicitud_licencia,
             commands::estado_licencia,
             commands::activar_licencia,
             commands::pausar_lector_global,
