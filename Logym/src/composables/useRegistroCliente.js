@@ -1,8 +1,12 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
-import { capturarHuella, compararHuella, guardarCliente, inicializarBaseDeDatos, pausarLectorGlobal } from '../services/tauriApi'
+import { capturarHuella, compararHuella, guardarCliente, inicializarBaseDeDatos, pausarLectorGlobal, listarTiposMembresia, obtenerPrecioInscripcion } from '../services/tauriApi'
 import { useCamera } from './useCamera'
 
 export function useRegistroCliente() {
+  const tiposMembresia = ref([])
+  const tipoMembresiaId = ref('')
+  const incluirInscripcion = ref(true)
+  const precioInscripcion = ref(0)
   const nombre = ref('')
   const telefono = ref('')
   const telefonoEmergencia = ref('')
@@ -68,6 +72,7 @@ export function useRegistroCliente() {
       mostrarMensaje('Introduce teléfonos válidos de máximo 25 caracteres.', 'error')
       return
     }
+    if (!tipoMembresiaId.value) { mostrarMensaje('Selecciona una membresía.', 'error'); return }
     try {
       const huellasCoinciden = await compararHuella(template1.value, template2.value)
       if (!huellasCoinciden) {
@@ -76,6 +81,8 @@ export function useRegistroCliente() {
       }
       await guardarCliente({
         nombre: nombre.value.trim(),
+        tipoMembresiaId: Number(tipoMembresiaId.value),
+        incluirInscripcion: incluirInscripcion.value,
         telefono: telefono.value.trim(),
         telefonoEmergencia: telefonoEmergencia.value.trim(),
         fechaRegistro: fechaRegistro.value,
@@ -108,6 +115,9 @@ export function useRegistroCliente() {
     fechaFinMembresia.value = sumarDias(hoy, 30)
     try {
       await inicializarBaseDeDatos()
+      tiposMembresia.value = await listarTiposMembresia()
+      precioInscripcion.value = await obtenerPrecioInscripcion()
+      if (tiposMembresia.value.length) tipoMembresiaId.value = String(tiposMembresia.value[0].id)
     } catch (error) {
       mostrarMensaje('No se pudo inicializar la base de datos local.', 'error')
     }
@@ -116,6 +126,7 @@ export function useRegistroCliente() {
   onBeforeUnmount(() => { pausarLectorGlobal(false).catch(console.error) })
 
   return {
+    tiposMembresia, tipoMembresiaId, incluirInscripcion, precioInscripcion,
     nombre, telefono, telefonoEmergencia, fechaRegistro, fechaInicioMembresia, fechaFinMembresia,
     template1, template2, mensaje, tipoMensaje, mostrarMensaje,
     ...camera, capturarHuellaCliente, guardar
