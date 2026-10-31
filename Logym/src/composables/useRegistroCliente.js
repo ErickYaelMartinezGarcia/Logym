@@ -1,5 +1,5 @@
-import { onMounted, ref } from 'vue'
-import { capturarHuella, compararHuella, guardarCliente, inicializarBaseDeDatos } from '../services/tauriApi'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { capturarHuella, compararHuella, guardarCliente, inicializarBaseDeDatos, pausarLectorGlobal } from '../services/tauriApi'
 import { useCamera } from './useCamera'
 
 export function useRegistroCliente() {
@@ -19,10 +19,17 @@ export function useRegistroCliente() {
     tipoMensaje.value = tipo
   }
 
+  function fechaLocal(date = new Date()) {
+    const anio = date.getFullYear()
+    const mes = String(date.getMonth() + 1).padStart(2, '0')
+    const dia = String(date.getDate()).padStart(2, '0')
+    return `${anio}-${mes}-${dia}`
+  }
+
   function sumarDias(fechaISO, dias) {
     const fecha = new Date(`${fechaISO}T00:00:00`)
     fecha.setDate(fecha.getDate() + dias)
-    return fecha.toISOString().slice(0, 10)
+    return fechaLocal(fecha)
   }
 
   const camera = useCamera(mostrarMensaje)
@@ -52,14 +59,15 @@ export function useRegistroCliente() {
       mostrarMensaje('La fecha de fin no puede ser anterior al inicio de membresía.', 'error')
       return
     }
-    // en useRegistroCliente.js - dentro de guardar()
-try {
-  const existente = await buscarPorHuella(template1.value) // te regresa id o null
-  if (existente) {
-    mostrarMensaje('Esa huella ya está registrada con otro miembro.', 'error')
-    return
-  }
-} catch {}
+    const telefonoValido = (valor) => valor.trim().length <= 25 && /^[0-9+() -]*$/.test(valor.trim())
+    if (nombre.value.trim().length > 120 || [...nombre.value].some(ch => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)) {
+      mostrarMensaje('El nombre debe tener máximo 120 caracteres y no contener caracteres de control.', 'error')
+      return
+    }
+    if (!telefonoValido(telefono.value) || !telefonoValido(telefonoEmergencia.value)) {
+      mostrarMensaje('Introduce teléfonos válidos de máximo 25 caracteres.', 'error')
+      return
+    }
     try {
       const huellasCoinciden = await compararHuella(template1.value, template2.value)
       if (!huellasCoinciden) {
@@ -82,7 +90,7 @@ try {
       template1.value = ''
       template2.value = ''
       camera.fotoBase64.value = ''
-      fechaRegistro.value = new Date().toISOString().slice(0, 10)
+      fechaRegistro.value = fechaLocal()
       fechaInicioMembresia.value = fechaRegistro.value
       fechaFinMembresia.value = sumarDias(fechaInicioMembresia.value, 30)
       mostrarMensaje('Miembro registrado. Ya puede utilizar el check-in.', 'success')
@@ -93,7 +101,8 @@ try {
   }
 
   onMounted(async () => {
-    const hoy = new Date().toISOString().slice(0, 10)
+    await pausarLectorGlobal(true)
+    const hoy = fechaLocal()
     fechaRegistro.value = hoy
     fechaInicioMembresia.value = hoy
     fechaFinMembresia.value = sumarDias(hoy, 30)
@@ -103,6 +112,8 @@ try {
       mostrarMensaje('No se pudo inicializar la base de datos local.', 'error')
     }
   })
+
+  onBeforeUnmount(() => { pausarLectorGlobal(false).catch(console.error) })
 
   return {
     nombre, telefono, telefonoEmergencia, fechaRegistro, fechaInicioMembresia, fechaFinMembresia,

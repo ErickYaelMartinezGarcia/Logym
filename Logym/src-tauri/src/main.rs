@@ -3,13 +3,15 @@
 mod commands;
 mod database;
 mod models;
+mod lector_worker;
 mod repositories;
 mod secugen;
 mod services;
 
 use commands::{
-    buscar_cliente_por_huella, capturar_huella, guardar_cliente, inicializar_db,
-    listar_clientes, listar_clientes_membresia, obtener_metricas, registrar_asistencia,
+    actualizar_cliente, establecer_cliente_activo, eliminar_cliente_definitivamente,
+    buscar_cliente_por_huella, capturar_huella, comparar_huella, check_in, guardar_cliente, inicializar_db,
+    listar_clientes, listar_clientes_membresia, obtener_metricas,
     renovar_membresia,
 };
 use std::path::PathBuf;
@@ -21,7 +23,6 @@ fn main() {
     }));
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_sql::Builder::default().build())
         .setup(|app| {
             let resource_dir = app.path_resolver().resource_dir().unwrap_or_else(|| PathBuf::from("."));
             println!("[INIT] resource_dir: {}", resource_dir.display());
@@ -46,18 +47,24 @@ fn main() {
                 }
                 Err(e) => eprintln!("[DB] Error: {}", e),
             }
+            lector_worker::iniciar(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::pausar_lector_global,
+            actualizar_cliente,
+            establecer_cliente_activo,
+            eliminar_cliente_definitivamente,
             inicializar_db,
             guardar_cliente,
             listar_clientes,
             listar_clientes_membresia,
             buscar_cliente_por_huella,
-            registrar_asistencia,
             renovar_membresia,
             obtener_metricas,
             capturar_huella,
+            comparar_huella,
+            check_in,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
