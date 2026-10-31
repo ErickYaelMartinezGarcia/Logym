@@ -49,6 +49,8 @@ pub fn inicializar_esquema(conexion: &Connection) -> Result<(), String> {
     asegurar_columna(conexion, "fecha_inicio_membresia", "TEXT DEFAULT (date('now'))")?;
     asegurar_columna(conexion, "fecha_fin_membresia", "TEXT DEFAULT (date('now', '+30 day'))")?;
     asegurar_columna(conexion, "telefono_emergencia", "TEXT")?;
+    // Migración no destructiva: todos los clientes existentes permanecen activos.
+    asegurar_columna(conexion, "activo", "INTEGER NOT NULL DEFAULT 1")?;
     conexion.execute("CREATE TABLE IF NOT EXISTS asistencias (id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_id INTEGER NOT NULL, fecha_hora TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE)", []).map_err(|e| e.to_string())?;
     conexion.execute("CREATE INDEX IF NOT EXISTS idx_asistencias_cliente_fecha ON asistencias(cliente_id, fecha_hora)", []).map_err(|e| e.to_string())?;
     conexion.execute("CREATE TABLE IF NOT EXISTS membresias_historial (id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_id INTEGER NOT NULL, fecha_inicio TEXT NOT NULL, fecha_fin TEXT NOT NULL, fecha_pago TEXT NOT NULL, tipo TEXT DEFAULT 'renovacion', observaciones TEXT, creado_en TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE)", []).map_err(|e| e.to_string())?;
