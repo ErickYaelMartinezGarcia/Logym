@@ -33,3 +33,10 @@ export const pausarLectorGlobal = (pausado) => ejecutar('pausar_lector_global', 
 export const listarTiposMembresia = () => ejecutar('listar_tipos_membresia')
 export const obtenerPrecioInscripcion = () => ejecutar('obtener_precio_inscripcion')
 export const resumenIngresos = (periodo) => ejecutar('resumen_ingresos', { periodo })
+
+export const adminConfigurado = () => ejecutar('admin_configurado')
+export const crearPasswordAdmin = (password) => ejecutar('crear_password_admin', { password })
+export const validarPasswordAdmin = (password) => ejecutar('validar_password_admin', { password })
+export const guardarPlanAdmin = (password, plan) => ejecutar('guardar_plan_admin', { password, ...plan })
+export const guardarInscripcionAdmin = (password, precioCentavos) => ejecutar('guardar_inscripcion_admin', { password, precioCentavos })
+export const obtenerAsistenciasPeriodo = (periodo) => ejecutar('obtener_asistencias_periodo', { periodo })
