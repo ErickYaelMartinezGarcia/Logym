@@ -40,3 +40,5 @@ export const validarPasswordAdmin = (password) => ejecutar('validar_password_adm
 export const guardarPlanAdmin = (password, plan) => ejecutar('guardar_plan_admin', { password, ...plan })
 export const guardarInscripcionAdmin = (password, precioCentavos) => ejecutar('guardar_inscripcion_admin', { password, precioCentavos })
 export const obtenerAsistenciasPeriodo = (periodo) => ejecutar('obtener_asistencias_periodo', { periodo })
+
+export const listarPlanesAdmin = (password) => ejecutar('listar_planes_admin', { password })
