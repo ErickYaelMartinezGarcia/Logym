@@ -11,7 +11,7 @@ mod services;
 use commands::{
     actualizar_cliente, establecer_cliente_activo, eliminar_cliente_definitivamente,
     buscar_cliente_por_huella, capturar_huella, comparar_huella, check_in, guardar_cliente, inicializar_db,
-    listar_clientes, listar_clientes_membresia, obtener_metricas, registrar_asistencia,
+    listar_clientes, listar_clientes_membresia, obtener_metricas,
     renovar_membresia,
 };
 use std::path::PathBuf;
@@ -60,7 +60,6 @@ fn main() {
             listar_clientes,
             listar_clientes_membresia,
             buscar_cliente_por_huella,
-            registrar_asistencia,
             renovar_membresia,
             obtener_metricas,
             capturar_huella,
