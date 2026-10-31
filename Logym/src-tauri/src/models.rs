@@ -67,3 +67,13 @@ pub struct Metricas {
     pub dia_mas_concurrido: String,
     pub hora_mayor_afluencia: String,
 }
+/// Datos editables; no permite modificar huellas ni identificadores.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActualizacionCliente {
+    pub nombre: String,
+    pub telefono: String,
+    pub telefono_emergencia: String,
+    pub fecha_inicio_membresia: String,
+    pub fecha_fin_membresia: String,
+}
