@@ -39,8 +39,8 @@ pub fn buscar_cliente_por_huella(app: &AppHandle) -> Result<Option<ClienteCheckI
     let id_opt = controller.identificar_template(&conn, &captured)?;
 
     if let Some(id) = id_opt {
-        let cliente = conn.query_row("SELECT id, nombre, telefono FROM clientes WHERE id=?1", params![id],
-            |r| Ok(ClienteCheckIn{ id: r.get(0)?, nombre: r.get(1)?, telefono: r.get(2)? })
+        let cliente = conn.query_row("SELECT id, nombre, COALESCE(telefono, ''), COALESCE(telefono_emergencia, ''), COALESCE(foto_base64, ''), COALESCE(fecha_registro, ''), COALESCE(fecha_inicio_membresia, ''), COALESCE(fecha_fin_membresia, ''), CAST(julianday(fecha_fin_membresia) - julianday(date('now','localtime')) AS INTEGER) FROM clientes WHERE id=?1 AND activo=1", params![id],
+            |r| { let dias: i64 = r.get::<_, Option<i64>>(8)?.unwrap_or(-1); Ok(ClienteCheckIn{ id: r.get(0)?, nombre: r.get(1)?, telefono: r.get(2)?, telefono_emergencia: r.get(3)?, foto_base64: r.get(4)?, fecha_registro: r.get(5)?, fecha_inicio_membresia: r.get(6)?, fecha_fin_membresia: r.get(7)?, estado_membresia: if dias < 0 { "vencida" } else if dias <= 3 { "por_vencer" } else { "activa" }.to_string(), dias_restantes: dias }) }
         ).map_err(|e| e.to_string())?;
         Ok(Some(cliente))
     } else {
