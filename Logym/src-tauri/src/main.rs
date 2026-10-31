@@ -3,6 +3,7 @@
 mod commands;
 mod database;
 mod models;
+mod lector_worker;
 mod repositories;
 mod secugen;
 mod services;
@@ -47,9 +48,11 @@ fn main() {
                 }
                 Err(e) => eprintln!("[DB] Error: {}", e),
             }
+            lector_worker::iniciar(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::pausar_lector_global,
             actualizar_cliente,
             establecer_cliente_activo,
             eliminar_cliente_definitivamente,
