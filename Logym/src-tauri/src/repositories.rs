@@ -99,7 +99,7 @@ pub fn registrar_asistencia(conexion: &Connection, cliente_id: i64) -> Result<St
 
 pub fn renovar_membresia(conexion: &Connection, cliente_id: i64, plan_id: i64) -> Result<String, String> {
     let (nombre, precio, meses): (String, i64, i64) = conexion.query_row(
-        "SELECT nombre,precio_centavos,duracion_meses FROM tipos_membresia WHERE id=?1 AND activo=1",
+        "SELECT nombre,precio_centavos,duracion_meses FROM tipos_membresia WHERE id=?1 AND activo=1 AND solo_alta=0",
         params![plan_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))
     ).map_err(|_| "Selecciona una membresía vigente".to_string())?;
     let tx = conexion.unchecked_transaction().map_err(|e| e.to_string())?;
