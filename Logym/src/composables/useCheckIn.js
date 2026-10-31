@@ -44,7 +44,7 @@ export function useCheckIn() {
   }
 
 async function capturarAcceso(forzar = false) {
-  if (capturaEnCurso.value) return
+  if (capturaEnCurso.value || modalAbierta.value) return
   // Anti-spam: si falló hace menos de 2s, no lo intentes de nuevo
   if (!forzar && Date.now() - ultimoIntentoFallido < 2000) return
 
@@ -90,7 +90,9 @@ async function capturarAcceso(forzar = false) {
   } catch (error) {
     console.error('Error en check-in:', error)
     estadoCheckin.value = 'error'
-    mensaje.value = 'No se pudo leer el lector. Revisa el USB.'
+    mensaje.value = String(error).includes('Ya registró') || String(error).includes('asistencia ya registrada')
+      ? 'Este cliente ya registró asistencia hoy.'
+      : 'No se pudo completar el acceso. Revisa el lector o la membresía.'
     ultimoIntentoFallido = Date.now()
     await new Promise(r => setTimeout(r, 2000))
   } finally {
@@ -125,7 +127,18 @@ async function capturarAcceso(forzar = false) {
     if (!clienteDetectado.value) return
     try {
       procesandoRenovacion.value = true
-      clienteDetectado.value = await renovarMembresia(clienteDetectado.value.id)
+      await renovarMembresia(clienteDetectado.value.id)
+      const hoy = new Date()
+      const fin = new Date(hoy)
+      fin.setDate(fin.getDate() + 30)
+      const fechaLocal = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
+      clienteDetectado.value = {
+        ...clienteDetectado.value,
+        fecha_inicio_membresia: fechaLocal(hoy),
+        fecha_fin_membresia: fechaLocal(fin),
+        dias_restantes: 30,
+        estado_membresia: 'activa'
+      }
       confirmandoRenovacion.value = false
       mensaje.value = `Membresía renovada para ${clienteDetectado.value.nombre}. Nuevo inicio: ${formatearFecha(clienteDetectado.value.fecha_inicio_membresia)}.`
     } catch (error) {
