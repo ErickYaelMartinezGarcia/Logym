@@ -150,12 +150,13 @@ pub fn inicializar_esquema(conexion: &Connection) -> Result<(), String> {
             id INTEGER PRIMARY KEY CHECK(id=1),
             password_hash TEXT NOT NULL
         );
-        INSERT OR IGNORE INTO tipos_membresia(nombre,duracion_meses,precio_centavos) VALUES
+        INSERT INTO tipos_membresia(nombre,duracion_meses,precio_centavos)
+        SELECT column1,column2,column3 FROM (VALUES
             ('Mensual',1,35000),
             ('Pareja',1,30000),
             ('Estudiante',1,28000),
             ('Bimestral',2,65000),
-            ('Semestral',6,180000);
+            ('Semestral',6,180000)) WHERE NOT EXISTS(SELECT 1 FROM tipos_membresia);
         UPDATE tipos_membresia SET solo_alta=1 WHERE nombre='Pareja';
     "#).map_err(|e| e.to_string())?;
     Ok(())
