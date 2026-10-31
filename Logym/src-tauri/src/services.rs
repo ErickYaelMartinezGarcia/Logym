@@ -35,6 +35,7 @@ pub fn buscar_cliente_por_huella(app: &AppHandle) -> Result<Option<ClienteCheckI
     let controller = secugen::SecuGenController::from_bin_path(&bin_path)?;
 
     let captured = controller.capturar_template()?;
+    let captured = match captured { Some(value) => value, None => return Ok(None) };
     let id_opt = controller.identificar_template(&conn, &captured)?;
 
     if let Some(id) = id_opt {
@@ -58,19 +59,19 @@ pub fn obtener_metricas(app: &AppHandle) -> Result<Metricas, String> {
     let conn = database::abrir_db(app)?; repositories::obtener_metricas(&conn)
 }
 pub fn check_in(app: &AppHandle) -> Result<Option<ClienteCheckIn>, String> {
-    // ...
-    let captured_opt = controller.capturar_template()?;
-    let captured = match captured_opt {
-        Some(c) => c,
-        None => return Ok(None), // no hay dedo
-    };
-    let id_opt = controller.identificar_template(&conn, &captured)?;
-    // ...
+    buscar_cliente_por_huella(app)
 }
 
 pub fn capturar_huella(app: &AppHandle) -> Result<Option<String>, String> {
-    let resource_path = app.path().resource_dir().map_err(|e| e.to_string())?;
-    let bin_path = crate::secugen::resolve_bin_path(&resource_path)?;
-    let controller = SecuGenController::from_bin_path(&bin_path)?;
-    controller.capturar_template() // ya regresa Option
+    let resource_path = app.path_resolver().resource_dir().unwrap_or_default();
+    let bin_path = secugen::resolve_bin_path(&resource_path)?;
+    let controller = secugen::SecuGenController::from_bin_path(&bin_path)?;
+    controller.capturar_template()
+}
+
+pub fn comparar_huella(app: &AppHandle, t1: &str, t2: &str) -> Result<bool, String> {
+    let resource_path = app.path_resolver().resource_dir().unwrap_or_default();
+    let bin_path = secugen::resolve_bin_path(&resource_path)?;
+    let controller = secugen::SecuGenController::from_bin_path(&bin_path)?;
+    controller.comparar_templates(t1, t2)
 }
