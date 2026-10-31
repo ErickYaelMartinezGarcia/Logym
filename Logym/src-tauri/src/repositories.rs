@@ -151,3 +151,50 @@ pub fn eliminar_cliente_definitivamente(conn: &mut Connection, id: i64) -> Resul
     if changed == 0 { return Err("Cliente no encontrado".into()); }
     tx.commit().map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    fn db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;
+          CREATE TABLE clientes (
+            id INTEGER PRIMARY KEY, nombre TEXT NOT NULL, telefono TEXT,
+            telefono_emergencia TEXT, fecha_inicio_membresia TEXT,
+            fecha_fin_membresia TEXT, activo INTEGER NOT NULL DEFAULT 1
+          );
+          CREATE TABLE asistencias (
+            id INTEGER PRIMARY KEY, cliente_id INTEGER NOT NULL,
+            fecha_hora TEXT NOT NULL, FOREIGN KEY(cliente_id) REFERENCES clientes(id)
+          );").unwrap();
+        conn
+    }
+    #[test]
+    fn membresia_futura_no_permite_acceso() {
+        let conn = db();
+        conn.execute("INSERT INTO clientes(id,nombre,fecha_inicio_membresia,fecha_fin_membresia) VALUES(1,'Test',date('now','localtime','+1 day'),date('now','localtime','+30 day'))", []).unwrap();
+        assert!(registrar_asistencia(&conn, 1).unwrap_err().contains("pendiente"));
+    }
+    #[test]
+    fn membresia_vigente_registra_solo_una_vez() {
+        let conn = db();
+        conn.execute("INSERT INTO clientes(id,nombre,fecha_inicio_membresia,fecha_fin_membresia) VALUES(1,'Test',date('now','localtime'),date('now','localtime','+30 day'))", []).unwrap();
+        assert!(registrar_asistencia(&conn, 1).is_ok());
+        assert!(registrar_asistencia(&conn, 1).unwrap_err().contains("Ya registró"));
+    }
+    #[test]
+    fn membresia_vencida_no_permite_acceso() {
+        let conn = db();
+        conn.execute("INSERT INTO clientes(id,nombre,fecha_inicio_membresia,fecha_fin_membresia) VALUES(1,'Test',date('now','localtime','-30 day'),date('now','localtime','-1 day'))", []).unwrap();
+        assert!(registrar_asistencia(&conn, 1).unwrap_err().contains("vencida"));
+    }
+    #[test]
+    fn edicion_rechaza_datos_invalidos() {
+        let conn = db();
+        let datos = ActualizacionCliente {
+            nombre: "Persona".into(), telefono: "abc".into(), telefono_emergencia: "".into(),
+            fecha_inicio_membresia: "2026-10-30".into(), fecha_fin_membresia: "2026-11-30".into(),
+        };
+        assert!(actualizar_cliente(&conn, 1, datos).is_err());
+    }
+}
