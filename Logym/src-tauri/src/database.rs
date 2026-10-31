@@ -109,7 +109,7 @@ fn asegurar_columna(conexion: &Connection, col: &str, def: &str) -> Result<(), S
         INSERT OR IGNORE INTO configuracion_cobros(id, inscripcion_centavos) VALUES(1, 0);
         CREATE TABLE IF NOT EXISTS pagos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE RESTRICT,
+            cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
             membresia_id INTEGER REFERENCES tipos_membresia(id) ON DELETE RESTRICT,
             concepto_membresia TEXT NOT NULL,
             membresia_centavos INTEGER NOT NULL CHECK(membresia_centavos >= 0),
