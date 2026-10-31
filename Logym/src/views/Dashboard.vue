@@ -2,12 +2,13 @@
 import AppShell from '../components/AppShell.vue'
 import { ref, onMounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
-import { resumenIngresos } from '../services/tauriApi'
+import { resumenIngresos, obtenerAsistenciasPeriodo } from '../services/tauriApi'
 const periodoIngresos = ref('mes')
 const ingresos = ref(null)
+const asistenciasPeriodo = ref(null)
 const errorIngresos = ref('')
 async function cargarIngresos() {
-  try { ingresos.value = await resumenIngresos(periodoIngresos.value); errorIngresos.value = '' }
+  try { [ingresos.value, asistenciasPeriodo.value] = await Promise.all([resumenIngresos(periodoIngresos.value), obtenerAsistenciasPeriodo(periodoIngresos.value)]); errorIngresos.value = '' }
   catch (e) { errorIngresos.value = String(e) }
 }
 let unsubscribeIngresos
@@ -30,6 +31,7 @@ function formatearFecha(valor) {
 }
 
 function etiquetaEstado(estado) {
+  if (estado === 'pendiente') return 'Pendiente'
   if (estado === 'vencida') return 'Vencida'
   if (estado === 'por_vencer') return 'Por vencer'
   if (estado === 'sin_fecha') return 'Sin fecha'
@@ -108,6 +110,7 @@ function etiquetaEstado(estado) {
         <article class="attendance-item"><span class="muted">Total cobrado</span><strong>{{ (ingresos.total_centavos/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'}) }}</strong></article>
         <article class="attendance-item"><span class="muted">Membresías</span><strong>{{ (ingresos.membresias_centavos/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'}) }}</strong></article>
         <article class="attendance-item"><span class="muted">Inscripciones</span><strong>{{ (ingresos.inscripciones_centavos/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'}) }}</strong></article>
+        <article class="attendance-item"><span class="muted">Asistencias del periodo</span><strong>{{ asistenciasPeriodo ?? 0 }}</strong></article>
       </div>
     </section>
     <section class="metrics-grid">
