@@ -11,7 +11,8 @@ const enlaces = [
    { to: '/dashboard', label: 'Dashboard', caption: 'Actividad del gimnasio', icon: 'grid' },
   { to: '/', label: 'Check-in', caption: 'Acceso de miembros', icon: 'fingerprint' },
   { to: '/registro', label: 'Nuevo miembro', caption: 'Alta y biometría', icon: 'user-plus' },
-  { to: '/clientes', label: 'Administrar clientes', caption: 'Editar y controlar accesos', icon: 'users' }
+  { to: '/clientes', label: 'Administrar clientes', caption: 'Editar y controlar accesos', icon: 'users' },
+  { to: '/precios', label: 'Precios y planes', caption: 'Acceso administrativo', icon: 'grid' }
 ]
 
 function cerrarMenu() {
