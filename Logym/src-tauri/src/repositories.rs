@@ -97,12 +97,25 @@ pub fn registrar_asistencia(conexion: &Connection, cliente_id: i64) -> Result<St
     Ok("Asistencia registrada".into())
 }
 
-pub fn renovar_membresia(conexion: &Connection, cliente_id: i64) -> Result<String, String> {
+pub fn renovar_membresia(conexion: &Connection, cliente_id: i64, plan_id: i64) -> Result<String, String> {
+    let (nombre, precio, meses): (String, i64, i64) = conexion.query_row(
+        "SELECT nombre,precio_centavos,duracion_meses FROM tipos_membresia WHERE id=?1 AND activo=1",
+        params![plan_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))
+    ).map_err(|_| "Selecciona una membresía vigente".to_string())?;
     let tx = conexion.unchecked_transaction().map_err(|e| e.to_string())?;
-    tx.execute("UPDATE clientes SET fecha_inicio_membresia = date('now','localtime'), fecha_fin_membresia = date('now','localtime','+30 day') WHERE id = ?1", params![cliente_id]).map_err(|e| e.to_string())?;
-    tx.execute("INSERT INTO membresias_historial (cliente_id, fecha_inicio, fecha_fin, fecha_pago, tipo) VALUES (?1, date('now','localtime'), date('now','localtime','+30 day'), datetime('now','localtime'), 'renovacion')", params![cliente_id]).map_err(|e| e.to_string())?;
+    let dias = chrono::Local::now().date_naive();
+    let fin = dias.checked_add_months(chrono::Months::new(meses as u32)).ok_or("Duración inválida")?;
+    let inicio = dias.format("%Y-%m-%d").to_string();
+    let finaliza = fin.format("%Y-%m-%d").to_string();
+    let changed = tx.execute("UPDATE clientes SET fecha_inicio_membresia=?1, fecha_fin_membresia=?2 WHERE id=?3 AND activo=1",
+        params![inicio,finaliza,cliente_id]).map_err(|e| e.to_string())?;
+    if changed == 0 { return Err("Cliente no encontrado o desactivado".into()); }
+    tx.execute("INSERT INTO membresias_historial(cliente_id,fecha_inicio,fecha_fin,fecha_pago,tipo) VALUES(?1,?2,?3,datetime('now','localtime'),'renovacion')",
+        params![cliente_id,inicio,finaliza]).map_err(|e| e.to_string())?;
+    tx.execute("INSERT INTO pagos(cliente_id,membresia_id,concepto_membresia,membresia_centavos,inscripcion_centavos,total_centavos,tipo) VALUES(?1,?2,?3,?4,0,?4,'renovacion')",
+        params![cliente_id,plan_id,nombre,precio]).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
-    Ok("Renovada 30 días".into())
+    Ok("Membresía renovada".into())
 }
 
 /// Obtiene indicadores exclusivamente de datos persistidos; nunca valores simulados.
