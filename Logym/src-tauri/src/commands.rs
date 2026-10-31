@@ -1,4 +1,4 @@
-use crate::models::{DatosCliente, DatosRenovacion};
+use crate::models::{DatosCliente, DatosRenovacion, ActualizacionCliente};
 use crate::services;
 use tauri::AppHandle;
 
@@ -28,4 +28,17 @@ pub fn capturar_huella(app: AppHandle) -> Result<Option<String>, String> {
 #[tauri::command]
 pub fn comparar_huella(app: AppHandle, t1: String, t2: String) -> Result<bool, String> {
     services::comparar_huella(&app, &t1, &t2)
+}
+
+#[tauri::command]
+pub fn actualizar_cliente(app: AppHandle, id: i64, datos: ActualizacionCliente) -> Result<(), String> {
+    services::actualizar_cliente(&app, id, datos)
+}
+#[tauri::command]
+pub fn establecer_cliente_activo(app: AppHandle, id: i64, activo: bool) -> Result<(), String> {
+    services::establecer_cliente_activo(&app, id, activo)
+}
+#[tauri::command]
+pub fn eliminar_cliente_definitivamente(app: AppHandle, id: i64, confirmacion: String) -> Result<(), String> {
+    services::eliminar_cliente_definitivamente(&app, id, confirmacion)
 }
