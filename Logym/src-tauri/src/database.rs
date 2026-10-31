@@ -106,7 +106,7 @@ fn asegurar_columna(conexion: &Connection, col: &str, def: &str) -> Result<(), S
             id INTEGER PRIMARY KEY CHECK(id = 1),
             inscripcion_centavos INTEGER NOT NULL DEFAULT 0 CHECK(inscripcion_centavos >= 0)
         );
-        INSERT OR IGNORE INTO configuracion_cobros(id, inscripcion_centavos) VALUES(1, 0);
+        INSERT OR IGNORE INTO configuracion_cobros(id, inscripcion_centavos) VALUES(1, 15000);
         CREATE TABLE IF NOT EXISTS pagos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
@@ -132,10 +132,6 @@ fn asegurar_columna(conexion: &Connection, col: &str, def: &str) -> Result<(), S
             ('Estudiante',1,28000),
             ('Bimestral',2,65000),
             ('Semestral',6,180000);
-        UPDATE configuracion_cobros SET inscripcion_centavos=15000
-        WHERE id=1 AND NOT EXISTS(SELECT 1 FROM pagos)
-          AND NOT EXISTS(SELECT 1 FROM administrador)
-          AND inscripcion_centavos=0;
     "#).map_err(|e| e.to_string())?;
     Ok(())
 }
