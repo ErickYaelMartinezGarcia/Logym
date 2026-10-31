@@ -33,7 +33,9 @@ pub fn iniciar(app: AppHandle) {
                     }
                     ultimo_id = Some(cliente.id);
                     ultimo_instante = std::time::Instant::now();
-                    let resultado = if cliente.estado_membresia == "vencida" || cliente.estado_membresia == "sin_fecha" {
+                    let resultado = if cliente.estado_membresia == "pendiente" {
+                        "membresia_pendiente".to_string()
+                    } else if cliente.estado_membresia == "vencida" || cliente.estado_membresia == "sin_fecha" {
                         "membresia_vencida".to_string()
                     } else {
                         match crate::services::registrar_asistencia(&app, cliente.id) {
