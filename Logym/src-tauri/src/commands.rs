@@ -17,7 +17,7 @@ pub fn check_in(app: AppHandle) -> Result<Option<crate::models::ClienteCheckIn>,
 #[tauri::command]
 pub fn registrar_asistencia(app: AppHandle, cliente_id: i64) -> Result<String, String> { services::registrar_asistencia(&app, cliente_id) }
 #[tauri::command]
-pub fn renovar_membresia(app: AppHandle, datos: DatosRenovacion) -> Result<String, String> { services::renovar_membresia(&app, datos) }
+pub fn renovar_membresia(app: AppHandle, datos: DatosRenovacion) -> Result<crate::models::ClienteCheckIn, String> { services::renovar_membresia(&app, datos) }
 #[tauri::command]
 pub fn obtener_metricas(app: AppHandle) -> Result<crate::models::Metricas, String> { services::obtener_metricas(&app) }
 #[tauri::command]
