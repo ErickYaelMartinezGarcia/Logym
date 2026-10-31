@@ -139,7 +139,8 @@ pub fn inicializar_esquema(conexion: &Connection) -> Result<(), String> {
     let tiene_solo_alta = {
         let mut stmt = conexion.prepare("PRAGMA table_info(tipos_membresia)").map_err(|e|e.to_string())?;
         let columnas = stmt.query_map([],|r|r.get::<_,String>(1)).map_err(|e|e.to_string())?;
-        columnas.filter_map(Result::ok).any(|n|n=="solo_alta")
+        let existe = columnas.filter_map(Result::ok).any(|n|n=="solo_alta");
+        existe
     };
     if !tiene_solo_alta {
         conexion.execute("ALTER TABLE tipos_membresia ADD COLUMN solo_alta INTEGER NOT NULL DEFAULT 0",[])
