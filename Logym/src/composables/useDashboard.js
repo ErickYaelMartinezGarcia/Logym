@@ -69,25 +69,33 @@ export function useDashboard() {
     }
   }
 
-  let refresco = null
+  // Recarga inicial y posteriores cambios confirmados por Rust, sin polling.
+  let dejarDeEscuchar = null
+  let montado = true
   let enCurso = false
+  let pendiente = false
   async function actualizar() {
-    if (enCurso || document.hidden) return
+    if (!montado) return
+    if (enCurso) { pendiente = true; return }
     enCurso = true
     try { await cargarDashboard() }
     catch (error) { console.error('Error al cargar dashboard:', error) }
-    finally { enCurso = false }
+    finally {
+      enCurso = false
+      if (pendiente) { pendiente = false; actualizar() }
+    }
   }
-  onMounted(() => {
+  onMounted(async () => {
+    montado = true
+    try {
+      const { listen } = await import('@tauri-apps/api/event')
+      dejarDeEscuchar = await listen('logym://datos-actualizados', actualizar)
+    } catch (error) { console.error('Error al suscribirse a métricas:', error) }
     actualizar()
-    window.addEventListener('focus', actualizar)
-    document.addEventListener('visibilitychange', actualizar)
-    refresco = window.setInterval(actualizar, 15000)
   })
   onBeforeUnmount(() => {
-    window.removeEventListener('focus', actualizar)
-    document.removeEventListener('visibilitychange', actualizar)
-    if (refresco) window.clearInterval(refresco)
+    montado = false
+    dejarDeEscuchar?.()
   })
 
   return {
