@@ -4,6 +4,7 @@ mod commands;
 mod database;
 mod models;
 mod lector_worker;
+mod licencia;
 mod repositories;
 mod secugen;
 mod services;
@@ -24,6 +25,7 @@ fn main() {
 
     tauri::Builder::default()
         .setup(|app| {
+            if licencia::verificar(&app.handle()).is_err() { println!("[LICENCIA] Activación requerida"); return Ok(()); }
             let resource_dir = app.path_resolver().resource_dir().unwrap_or_else(|| PathBuf::from("."));
             println!("[INIT] resource_dir: {}", resource_dir.display());
             
@@ -51,6 +53,9 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::solicitud_licencia,
+            commands::estado_licencia,
+            commands::activar_licencia,
             commands::pausar_lector_global,
             actualizar_cliente,
             establecer_cliente_activo,
