@@ -88,7 +88,7 @@ Es la tabla principal de personas registradas.
 | `telefono` | `TEXT` | — | Teléfono del cliente, opcional. |
 | `telefono_emergencia` | `TEXT` | — | Teléfono de emergencia, opcional. |
 | `foto_base64` | `TEXT` | — | Imagen almacenada como cadena Base64 o Data URI. |
-| `template_huella` | `TEXT` | — | Identificador/template biométrico asociado. |
+| `template_huella` | `TEXT` | — | Template SG400 real del SDK FDx, almacenado como hexadecimal. |
 | `fecha_registro` | `TEXT` | `DEFAULT CURRENT_TIMESTAMP` | Fecha de alta del cliente. |
 | `fecha_inicio_membresia` | `TEXT` | `DEFAULT date('now')` | Inicio de la membresía vigente. |
 | `fecha_fin_membresia` | `TEXT` | `DEFAULT date('now', '+30 day')` | Fin de la membresía vigente. |
@@ -198,7 +198,7 @@ cliente_id = 1, tipo = renovacion, fecha_inicio = 2026-10-01, fecha_fin = 2026-1
 ```mermaid
 flowchart TD
     A[Capturar huella] --> B[Obtener template]
-    B --> C{Buscar template_huella en clientes}
+    B --> C{Identificar template con SecuSearch}
     C -->|No encontrado| D[Mostrar huella no registrada]
     C -->|Cliente encontrado| E[Consultar fecha_fin_membresia]
     E --> F{Membresía vigente}
@@ -212,7 +212,7 @@ flowchart TD
 ### Reglas del check-in
 
 1. Se captura una huella.
-2. Se busca el template en `clientes.template_huella`.
+2. Se cargan temporalmente los templates SG400 de `clientes.template_huella` en SecuSearch y se identifica la huella.
 3. Se calcula el estado con `fecha_fin_membresia`.
 4. Una membresía vencida no genera asistencia.
 5. Una membresía activa o próxima a vencer puede registrar entrada.

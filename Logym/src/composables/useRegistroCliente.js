@@ -1,5 +1,5 @@
 import { onMounted, ref } from 'vue'
-import { capturarHuella, guardarCliente, guardarTemplate, inicializarBaseDeDatos } from '../services/tauriApi'
+import { capturarHuella, compararHuella, guardarCliente, inicializarBaseDeDatos } from '../services/tauriApi'
 import { useCamera } from './useCamera'
 
 export function useRegistroCliente() {
@@ -35,7 +35,7 @@ export function useRegistroCliente() {
       mostrarMensaje(`Huella ${numero} capturada. Repite para confirmar la identidad.`, 'success')
     } catch (error) {
       console.error(`Error al capturar huella ${numero}:`, error)
-      mostrarMensaje('El lector no está conectado o aún usa el modo demostración.', 'error')
+      mostrarMensaje('No se pudo capturar la huella. Verifica que el lector y su controlador estén conectados.', 'error')
     }
   }
 
@@ -52,8 +52,21 @@ export function useRegistroCliente() {
       mostrarMensaje('La fecha de fin no puede ser anterior al inicio de membresía.', 'error')
       return
     }
+    // en useRegistroCliente.js - dentro de guardar()
+try {
+  const existente = await buscarPorHuella(template1.value) // te regresa id o null
+  if (existente) {
+    mostrarMensaje('Esa huella ya está registrada con otro miembro.', 'error')
+    return
+  }
+} catch {}
     try {
-      const clienteId = await guardarCliente({
+      const huellasCoinciden = await compararHuella(template1.value, template2.value)
+      if (!huellasCoinciden) {
+        mostrarMensaje('Las capturas no coinciden. Repite el registro biométrico.', 'error')
+        return
+      }
+      await guardarCliente({
         nombre: nombre.value.trim(),
         telefono: telefono.value.trim(),
         telefonoEmergencia: telefonoEmergencia.value.trim(),
@@ -63,7 +76,6 @@ export function useRegistroCliente() {
         fotoBase64: camera.fotoBase64.value,
         templateHuella: template1.value
       })
-      await guardarTemplate(clienteId, template1.value)
       nombre.value = ''
       telefono.value = ''
       telefonoEmergencia.value = ''

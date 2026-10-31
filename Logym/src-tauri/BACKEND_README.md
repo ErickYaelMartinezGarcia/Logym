@@ -17,7 +17,7 @@ repositories.rs      Consultas y escrituras SQLite
 database.rs           Ubicación, conexión y esquema de gym.db
 ```
 
-La biometría está aislada en `biometria.rs` porque actualmente contiene un mock del lector. Ahí se reemplazará la simulación cuando se integre el SDK real.
+La biometría real está aislada en `secugen.rs`. El módulo carga `sgfplib.dll` para capturar y comparar templates FDx, y `secusearchapi.dll` para identificar una huella contra los templates registrados en SQLite.
 
 ## Archivos y responsabilidades
 
@@ -29,7 +29,7 @@ La biometría está aislada en `biometria.rs` porque actualmente contiene un moc
 | `services.rs` | Valida reglas, abre la base y coordina repositorios. |
 | `repositories.rs` | Contiene SQL y transforma filas SQLite en modelos Rust. |
 | `database.rs` | Resuelve la ruta de `gym.db`, crea el esquema e índices. |
-| `biometria.rs` | Encapsula captura, almacenamiento temporal y comparación de huellas. |
+| `secugen.rs` | Integra FDx SDK Pro y SecuSearch Pro mediante carga dinámica de sus DLLs. |
 
 ## Comandos disponibles
 
@@ -43,11 +43,15 @@ La biometría está aislada en `biometria.rs` porque actualmente contiene un moc
 | `registrar_asistencia` | Registra una asistencia válida; solo permite una por cliente y fecha. |
 | `renovar_membresia` | Autoriza una renovación mensual de 30 días y agrega el movimiento al historial; no procesa cobros. |
 | `obtener_metricas` | Devuelve entradas de hoy, últimos 7 días, día y hora de mayor afluencia. |
-| `capturar_huella` | Mock temporal del lector DigitalPersona 4500. |
-| `guardar_template` | Guarda temporalmente un template en memoria. |
-| `comparar_huella` | Compara templates en el mock actual. |
+| `capturar_huella` | Captura una imagen real con el lector SecuGen y genera un template SG400. |
+| `comparar_huella` | Verifica las dos capturas de registro con `SGFPM_MatchTemplate`. |
 
 ## Base de datos
+
+Los templates se generan con formato SG400 y se guardan como texto hexadecimal en
+`clientes.template_huella`. En cada check-in, SecuSearch registra temporalmente los
+templates válidos de SQLite y ejecuta `SecuSearch_IdentifyFP`; no se usa un cliente
+demo ni un template simulado. Las DLL del SDK se empaquetan desde `src-tauri/bin`.
 
 La base se llama `gym.db` y se resuelve en la carpeta de datos local de Tauri. Si existe un `gym.db` legado en el directorio de trabajo, `database.rs` lo copia sin eliminar el original.
 

@@ -30,7 +30,7 @@ const {
           <label class="field-label">Inicio de membresía<input v-model="fechaInicioMembresia" type="date" /></label>
           <label class="field-label">Fin de membresía<input v-model="fechaFinMembresia" type="date" /></label>
         </div>
-        <div class="capture-row"><button class="capture-card" :class="{ done: template1 }" @click="capturarHuella(1)"><span class="capture-icon">01</span><span><strong>{{ template1 ? 'Huella guardada' : 'Primera huella' }}</strong><small>{{ template1 ? 'Captura completa' : 'Coloca el dedo en el lector' }}</small></span><b>›</b></button><button class="capture-card" :class="{ done: template2 }" @click="capturarHuella(2)"><span class="capture-icon">02</span><span><strong>{{ template2 ? 'Huella confirmada' : 'Confirmación' }}</strong><small>{{ template2 ? 'Captura completa' : 'Repite la misma huella' }}</small></span><b>›</b></button></div>
+        <div class="capture-row"><button class="capture-card" :class="{ done: template1 }" @click="capturarHuellaCliente(1)"><span class="capture-icon">01</span><span><strong>{{ template1 ? 'Huella guardada' : 'Primera huella' }}</strong><small>{{ template1 ? 'Captura completa' : 'Coloca el dedo en el lector' }}</small></span><b>›</b></button><button class="capture-card" :class="{ done: template2 }" @click="capturarHuellaCliente(2)"><span class="capture-icon">02</span><span><strong>{{ template2 ? 'Huella confirmada' : 'Confirmación' }}</strong><small>{{ template2 ? 'Captura completa' : 'Repite la misma huella' }}</small></span><b>›</b></button></div>
         <button class="primary-button" @click="guardarCliente">Guardar miembro <span>→</span></button>
         <p class="feedback" :class="`feedback--${tipoMensaje}`">{{ mensaje }}</p>
       </section>

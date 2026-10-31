@@ -8,6 +8,5 @@ export {
   renovarMembresia as renovarMembresiaCliente,
   listarClientes,
   obtenerMetricasDashboard,
-  capturarHuella,
-  guardarTemplate
+  capturarHuella
 } from './services/tauriApi'

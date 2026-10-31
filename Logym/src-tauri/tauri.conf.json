@@ -26,7 +26,8 @@
       "csp": null
     },
     "bundle": {
-      "identifier": "com.virtusgym.desktop"
+      "identifier": "com.virtusgym.desktop",
+      "resources": ["bin/**/*"]
     }
   }
 }

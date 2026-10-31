@@ -1,0 +1,18 @@
+apply plugin: 'java'
+apply plugin: 'application'
+
+group = 'com.secugen.secusearch'
+version = '3.2.4'
+sourceCompatibility = '1.7'
+targetCompatibility = '1.7'
+
+mainClassName = 'com.secugen.secusearch.sample.SSApiTest'
+
+repositories {
+    jcenter()
+}
+
+dependencies {
+    compile files('../lib/secusearch-api-3.2.4.jar')
+    compile group: 'net.java.dev.jna', name: 'jna', version: '4.4.0'
+}
