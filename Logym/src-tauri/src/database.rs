@@ -93,6 +93,34 @@ fn asegurar_columna(conexion: &Connection, col: &str, def: &str) -> Result<(), S
     if !existe {
         conexion.execute(&format!("ALTER TABLE clientes ADD COLUMN {} {}", col, def), []).map_err(|e| e.to_string())?;
     }
+    // Precios en centavos: nunca recalcular pagos históricos desde el catálogo.
+    conexion.execute_batch(r#"
+        CREATE TABLE IF NOT EXISTS tipos_membresia (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL UNIQUE,
+            duracion_meses INTEGER NOT NULL CHECK(duracion_meses > 0),
+            precio_centavos INTEGER NOT NULL CHECK(precio_centavos >= 0),
+            activo INTEGER NOT NULL DEFAULT 1 CHECK(activo IN (0,1))
+        );
+        CREATE TABLE IF NOT EXISTS configuracion_cobros (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            inscripcion_centavos INTEGER NOT NULL DEFAULT 0 CHECK(inscripcion_centavos >= 0)
+        );
+        INSERT OR IGNORE INTO configuracion_cobros(id, inscripcion_centavos) VALUES(1, 0);
+        CREATE TABLE IF NOT EXISTS pagos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE RESTRICT,
+            membresia_id INTEGER REFERENCES tipos_membresia(id) ON DELETE RESTRICT,
+            concepto_membresia TEXT NOT NULL,
+            membresia_centavos INTEGER NOT NULL CHECK(membresia_centavos >= 0),
+            inscripcion_centavos INTEGER NOT NULL DEFAULT 0 CHECK(inscripcion_centavos >= 0),
+            total_centavos INTEGER NOT NULL CHECK(total_centavos = membresia_centavos + inscripcion_centavos),
+            fecha_pago TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            tipo TEXT NOT NULL CHECK(tipo IN ('alta','renovacion'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_pagos_fecha ON pagos(fecha_pago);
+        CREATE INDEX IF NOT EXISTS idx_pagos_cliente ON pagos(cliente_id);
+    "#).map_err(|e| e.to_string())?;
     Ok(())
 }
 
