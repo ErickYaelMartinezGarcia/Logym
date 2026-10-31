@@ -13,7 +13,7 @@ pub fn listar_clientes_membresia(app: AppHandle) -> Result<Vec<crate::models::Cl
 #[tauri::command]
 pub fn buscar_cliente_por_huella(app: AppHandle) -> Result<Option<crate::models::ClienteCheckIn>, String> { services::buscar_cliente_por_huella(&app) }
 #[tauri::command]
-pub fn check_in(app: AppHandle) -> Result<crate::models::ClienteCheckIn, String> { services::check_in(&app) }
+pub fn check_in(app: AppHandle) -> Result<Option<crate::models::ClienteCheckIn>, String> { services::check_in(&app) }
 #[tauri::command]
 pub fn registrar_asistencia(app: AppHandle, cliente_id: i64) -> Result<String, String> { services::registrar_asistencia(&app, cliente_id) }
 #[tauri::command]
@@ -21,6 +21,11 @@ pub fn renovar_membresia(app: AppHandle, datos: DatosRenovacion) -> Result<Strin
 #[tauri::command]
 pub fn obtener_metricas(app: AppHandle) -> Result<crate::models::Metricas, String> { services::obtener_metricas(&app) }
 #[tauri::command]
-fn capturar_huella(controller: tauri::State<SecuGenController>) -> Result<Option<String>, String> {
-    controller.capturar_template()
+pub fn capturar_huella(app: AppHandle) -> Result<Option<String>, String> {
+    services::capturar_huella(&app)
+}
+
+#[tauri::command]
+pub fn comparar_huella(app: AppHandle, t1: String, t2: String) -> Result<bool, String> {
+    services::comparar_huella(&app, &t1, &t2)
 }
