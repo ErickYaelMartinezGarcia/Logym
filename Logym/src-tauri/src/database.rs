@@ -113,7 +113,8 @@ pub fn inicializar_esquema(conexion: &Connection) -> Result<(), String> {
             nombre TEXT NOT NULL UNIQUE,
             duracion_meses INTEGER NOT NULL CHECK(duracion_meses > 0),
             precio_centavos INTEGER NOT NULL CHECK(precio_centavos >= 0),
-            activo INTEGER NOT NULL DEFAULT 1 CHECK(activo IN (0,1))
+            activo INTEGER NOT NULL DEFAULT 1 CHECK(activo IN (0,1)),
+            solo_alta INTEGER NOT NULL DEFAULT 0 CHECK(solo_alta IN (0,1))
         );
         CREATE TABLE IF NOT EXISTS configuracion_cobros (
             id INTEGER PRIMARY KEY CHECK(id = 1),
@@ -134,6 +135,16 @@ pub fn inicializar_esquema(conexion: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_pagos_fecha ON pagos(fecha_pago);
         CREATE INDEX IF NOT EXISTS idx_pagos_cliente ON pagos(cliente_id);
     "#).map_err(|e| e.to_string())?;
+    // Agregar la restricción de alta a instalaciones que ya tenían el catálogo.
+    let tiene_solo_alta = {
+        let mut stmt = conexion.prepare("PRAGMA table_info(tipos_membresia)").map_err(|e|e.to_string())?;
+        stmt.query_map([],|r|r.get::<_,String>(1)).map_err(|e|e.to_string())?
+            .filter_map(Result::ok).any(|n|n=="solo_alta")
+    };
+    if !tiene_solo_alta {
+        conexion.execute("ALTER TABLE tipos_membresia ADD COLUMN solo_alta INTEGER NOT NULL DEFAULT 0",[])
+            .map_err(|e|e.to_string())?;
+    }
     conexion.execute_batch(r#"
         CREATE TABLE IF NOT EXISTS administrador (
             id INTEGER PRIMARY KEY CHECK(id=1),
@@ -145,6 +156,7 @@ pub fn inicializar_esquema(conexion: &Connection) -> Result<(), String> {
             ('Estudiante',1,28000),
             ('Bimestral',2,65000),
             ('Semestral',6,180000);
+        UPDATE tipos_membresia SET solo_alta=1 WHERE nombre='Pareja';
     "#).map_err(|e| e.to_string())?;
     Ok(())
 }
