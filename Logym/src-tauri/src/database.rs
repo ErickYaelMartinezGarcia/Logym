@@ -13,13 +13,7 @@ fn ruta_db(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
     let ruta_db = directorio_datos.join("gym.db");
 
-    if !ruta_db.exists() {
-        let legacy = PathBuf::from("gym.db");
-        if legacy.exists() {
-            println!("[DB] Migrando legacy");
-            let _ = fs::copy(&legacy, &ruta_db);
-        }
-    }
+    // No copiar automáticamente SQLite legacy: podría omitir datos WAL.
     Ok(ruta_db)
 }
 
@@ -72,7 +66,7 @@ fn abrir_cifrada(ruta: &std::path::Path) -> Result<Connection, String> {
     }
     let clave = clave_db(ruta)?;
     let conn = Connection::open(ruta).map_err(|e| e.to_string())?;
-    conn.pragma_update(None, "key", format!("x'{clave}'")).map_err(|e| e.to_string())?;
+    conn.execute_batch(&format!("PRAGMA key = \"x'{clave}'\";")).map_err(|e| e.to_string())?;
     // Detecta una clave incorrecta antes de intentar migraciones o escrituras.
     conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))
         .map_err(|e| format!("No se pudo descifrar la base: {e}"))?;
