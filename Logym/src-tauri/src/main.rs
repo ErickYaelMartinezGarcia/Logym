@@ -8,6 +8,7 @@ mod secugen;
 mod services;
 
 use commands::{
+    actualizar_cliente, establecer_cliente_activo, eliminar_cliente_definitivamente,
     buscar_cliente_por_huella, capturar_huella, comparar_huella, check_in, guardar_cliente, inicializar_db,
     listar_clientes, listar_clientes_membresia, obtener_metricas, registrar_asistencia,
     renovar_membresia,
@@ -49,6 +50,9 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            actualizar_cliente,
+            establecer_cliente_activo,
+            eliminar_cliente_definitivamente,
             inicializar_db,
             guardar_cliente,
             listar_clientes,
