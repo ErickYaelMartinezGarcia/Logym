@@ -23,13 +23,73 @@ fn ruta_db(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(ruta_db)
 }
 
-pub fn abrir_db(app: &tauri::AppHandle) -> Result<Connection, String> {
-    let ruta = ruta_db(app)?;
-    let conn = Connection::open(&ruta)
-        .map_err(|e| format!("No se pudo abrir DB en {}: {}", ruta.display(), e))?;
+// La clave SQLCipher nunca se expone a Vue ni se almacena en texto plano.
+#[cfg(windows)]
+fn dpapi(datos: &[u8], proteger: bool) -> Result<Vec<u8>, String> {
+    use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, DATA_BLOB, CRYPTPROTECT_UI_FORBIDDEN};
+    use windows_sys::Win32::System::Memory::LocalFree;
+    let mut entrada = DATA_BLOB { cbData: datos.len() as u32, pbData: datos.as_ptr() as *mut u8 };
+    let mut salida = DATA_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+    let ok = unsafe {
+        if proteger {
+            CryptProtectData(&mut entrada, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut salida)
+        } else {
+            CryptUnprotectData(&mut entrada, std::ptr::null_mut(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut salida)
+        }
+    };
+    if ok == 0 { return Err(format!("Windows DPAPI: {}", std::io::Error::last_os_error())); }
+    let resultado = unsafe { std::slice::from_raw_parts(salida.pbData, salida.cbData as usize).to_vec() };
+    unsafe { LocalFree(salida.pbData as isize); }
+    Ok(resultado)
+}
+
+#[cfg(windows)]
+fn clave_db(ruta: &std::path::Path) -> Result<String, String> {
+    let ruta_clave = ruta.with_extension("key.dpapi");
+    let clave = if ruta_clave.exists() {
+        let protegida = fs::read(&ruta_clave).map_err(|e| e.to_string())?;
+        let bytes = dpapi(&protegida, false)?;
+        if bytes.len() != 32 { return Err("Clave cifrada inválida".into()); }
+        bytes
+    } else {
+        // No regenerar la clave de una base existente: eso impediría recuperar los datos.
+        let mut nueva = vec![0u8; 32];
+        getrandom::getrandom(&mut nueva).map_err(|e| e.to_string())?;
+        let protegida = dpapi(&nueva, true)?;
+        let temporal = ruta_clave.with_extension("key.tmp");
+        fs::write(&temporal, protegida).map_err(|e| e.to_string())?;
+        fs::rename(&temporal, &ruta_clave).map_err(|e| e.to_string())?;
+        nueva
+    };
+    Ok(clave.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+#[cfg(windows)]
+fn abrir_cifrada(ruta: &std::path::Path) -> Result<Connection, String> {
+    let ruta_clave = ruta.with_extension("key.dpapi");
+    if ruta.exists() && !ruta_clave.exists() {
+        return Err("Se detectó una base de datos anterior sin cifrar. No se modificó: se requiere migración segura antes de abrirla.".into());
+    }
+    let clave = clave_db(ruta)?;
+    let conn = Connection::open(ruta).map_err(|e| e.to_string())?;
+    conn.pragma_update(None, "key", format!("x'{clave}'")).map_err(|e| e.to_string())?;
+    // Detecta una clave incorrecta antes de intentar migraciones o escrituras.
+    conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))
+        .map_err(|e| format!("No se pudo descifrar la base: {e}"))?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
         .map_err(|e| e.to_string())?;
     Ok(conn)
+}
+
+pub fn abrir_db(app: &tauri::AppHandle) -> Result<Connection, String> {
+    let ruta = ruta_db(app)?;
+    #[cfg(windows)]
+    { abrir_cifrada(&ruta) }
+    #[cfg(not(windows))]
+    {
+        let _ = ruta;
+        Err("El almacenamiento cifrado de Logym requiere Windows DPAPI".into())
+    }
 }
 
 fn asegurar_columna(conexion: &Connection, col: &str, def: &str) -> Result<(), String> {
