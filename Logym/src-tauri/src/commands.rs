@@ -42,3 +42,9 @@ pub fn establecer_cliente_activo(app: AppHandle, id: i64, activo: bool) -> Resul
 pub fn eliminar_cliente_definitivamente(app: AppHandle, id: i64, confirmacion: String) -> Result<(), String> {
     services::eliminar_cliente_definitivamente(&app, id, confirmacion)
 }
+
+/// Pausa temporalmente el supervisor al registrar una huella nueva.
+#[tauri::command]
+pub fn pausar_lector_global(pausado: bool) {
+    crate::lector_worker::pausar(pausado);
+}
