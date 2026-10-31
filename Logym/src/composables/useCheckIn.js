@@ -88,7 +88,7 @@ export function useCheckIn() {
   }
   onMounted(async () => {
     try {
-      tiposMembresia.value = await listarTiposMembresia()
+      tiposMembresia.value = (await listarTiposMembresia()).filter(plan => !plan.solo_alta)
       if (tiposMembresia.value.length) tipoMembresiaId.value = String(tiposMembresia.value[0].id)
     } catch (error) { mensaje.value = `No se pudieron cargar las membresías: ${String(error)}` }
     try { dejarDeEscuchar = await listen('logym://checkin', recibirLectura) }
