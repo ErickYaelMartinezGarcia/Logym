@@ -2,6 +2,14 @@ use rusqlite::{params, Connection};
 use crate::models::*;
 
 pub fn guardar_cliente(conexion: &Connection, datos: DatosCliente) -> Result<i64, String> {
+    let plan_id = datos.tipo_membresia_id.ok_or("Selecciona una membresía")?;
+    let (plan_nombre, precio): (String, i64) = conexion.query_row(
+        "SELECT nombre, precio_centavos FROM tipos_membresia WHERE id=?1 AND activo=1",
+        params![plan_id], |r| Ok((r.get(0)?, r.get(1)?))
+    ).map_err(|_| "La membresía seleccionada no está disponible".to_string())?;
+    let inscripcion = if datos.incluir_inscripcion {
+        crate::membresias::inscripcion(conexion)?
+    } else { 0 };
     let tx = conexion.unchecked_transaction().map_err(|e| e.to_string())?;
     tx.execute(
         "INSERT INTO clientes (nombre, telefono, telefono_emergencia, fecha_registro, fecha_inicio_membresia, fecha_fin_membresia, foto_base64, template_huella)
@@ -13,6 +21,10 @@ pub fn guardar_cliente(conexion: &Connection, datos: DatosCliente) -> Result<i64
         "INSERT INTO membresias_historial (cliente_id, fecha_inicio, fecha_fin, fecha_pago, tipo, observaciones)
          VALUES (?1, ?2, ?3, ?4, 'alta', 'Alta inicial')",
         params![id, datos.fecha_inicio_membresia, datos.fecha_fin_membresia, datos.fecha_registro],
+    ).map_err(|e| e.to_string())?;
+    tx.execute(
+        "INSERT INTO pagos(cliente_id,membresia_id,concepto_membresia,membresia_centavos,inscripcion_centavos,total_centavos,fecha_pago,tipo) VALUES(?1,?2,?3,?4,?5,?6,datetime('now','localtime'),'alta')",
+        params![id,plan_id,plan_nombre,precio,inscripcion,precio+inscripcion],
     ).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(id)
