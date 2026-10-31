@@ -90,9 +90,15 @@ async function capturarAcceso(forzar = false) {
   } catch (error) {
     console.error('Error en check-in:', error)
     estadoCheckin.value = 'error'
-    mensaje.value = String(error).includes('Ya registró') || String(error).includes('asistencia ya registrada')
+    const detalle = String(error)
+    mensaje.value = detalle.includes('Ya registró')
       ? 'Este cliente ya registró asistencia hoy.'
-      : 'No se pudo completar el acceso. Revisa el lector o la membresía.'
+      : detalle.includes('membresía no vigente') || detalle.includes('desactivado')
+        ? detalle
+        : detalle.includes('SGFPM') || detalle.includes('lector') || detalle.includes('USB')
+          ? 'No se pudo leer la huella. Revisa el lector USB.'
+          : 'No se pudo registrar la asistencia: ' + detalle
+    console.error('[CHECK-IN] Falló el registro:', detalle)
     ultimoIntentoFallido = Date.now()
     await new Promise(r => setTimeout(r, 2000))
   } finally {
