@@ -8,7 +8,8 @@ const menuAbierto = ref(false)
 const enlaces = [
    { to: '/dashboard', label: 'Dashboard', caption: 'Actividad del gimnasio', icon: 'grid' },
   { to: '/', label: 'Check-in', caption: 'Acceso de miembros', icon: 'fingerprint' },
-  { to: '/registro', label: 'Nuevo miembro', caption: 'Alta y biometría', icon: 'user-plus' }
+  { to: '/registro', label: 'Nuevo miembro', caption: 'Alta y biometría', icon: 'user-plus' },
+  { to: '/clientes', label: 'Administrar clientes', caption: 'Editar y controlar accesos', icon: 'users' }
 ]
 
 function cerrarMenu() {
