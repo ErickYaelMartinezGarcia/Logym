@@ -1,5 +1,19 @@
 <script setup>
 import AppShell from '../components/AppShell.vue'
+import { ref, onMounted } from 'vue'
+import { listen } from '@tauri-apps/api/event'
+import { resumenIngresos } from '../services/tauriApi'
+const periodoIngresos = ref('mes')
+const ingresos = ref(null)
+const errorIngresos = ref('')
+async function cargarIngresos() {
+  try { ingresos.value = await resumenIngresos(periodoIngresos.value); errorIngresos.value = '' }
+  catch (e) { errorIngresos.value = String(e) }
+}
+let unsubscribeIngresos
+onMounted(async () => { await cargarIngresos(); try { unsubscribeIngresos = await listen('logym://datos-actualizados', cargarIngresos) } catch(e) { console.error(e) } })
+import { onBeforeUnmount } from 'vue'
+onBeforeUnmount(() => unsubscribeIngresos?.())
 import { useDashboard } from '../composables/useDashboard'
 
 const {
@@ -82,6 +96,20 @@ function etiquetaEstado(estado) {
       </div>
     </section>
 
+    <section class="surface page-section">
+      <div class="section-heading">
+        <div><p class="eyebrow">INGRESOS REALES</p><h2 class="section-title">Cobros registrados</h2></div>
+        <select v-model="periodoIngresos" @change="cargarIngresos" class="search-input" aria-label="Periodo de ingresos">
+          <option value="dia">Hoy</option><option value="semana">Últimos 7 días</option><option value="mes">Mes actual</option>
+        </select>
+      </div>
+      <p v-if="errorIngresos" class="muted">{{ errorIngresos }}</p>
+      <div v-if="ingresos" class="attendance-summary">
+        <article class="attendance-item"><span class="muted">Total cobrado</span><strong>{{ (ingresos.total_centavos/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'}) }}</strong></article>
+        <article class="attendance-item"><span class="muted">Membresías</span><strong>{{ (ingresos.membresias_centavos/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'}) }}</strong></article>
+        <article class="attendance-item"><span class="muted">Inscripciones</span><strong>{{ (ingresos.inscripciones_centavos/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'}) }}</strong></article>
+      </div>
+    </section>
     <section class="metrics-grid">
       <article v-for="item in metricas" :key="item.titulo" class="surface metric-card">
         <div class="metric-card__top"><span>{{ item.icon }}</span><span class="muted metric-card__trend">{{ item.trend
