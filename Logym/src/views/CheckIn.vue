@@ -96,12 +96,12 @@ const {
   display: grid;
   grid-template-columns: 1fr minmax(320px, 430px);
   align-items: center;
-  gap: 12%;
-  min-height: calc(100vh - 160px);
+  gap: clamp(20px, 5vw, 90px);
+  min-height: min(620px, calc(100dvh - 100px));
 }
 
 .checkin-card {
-  padding: 42px 38px;
+  padding: clamp(18px, 3vh, 36px) 32px;
   text-align: center;
 }
 
@@ -109,9 +109,9 @@ const {
   position: relative;
   display: grid;
   place-items: center;
-  width: 180px;
-  height: 180px;
-  margin: 0 auto 26px;
+  width: clamp(115px, 21vh, 170px);
+  height: clamp(115px, 21vh, 170px);
+  margin: 0 auto 18px;
   border: 1px solid #5a1b2a;
   border-radius: 50%;
   color: #ee2046;
@@ -124,7 +124,7 @@ const {
 }
 
 .fingerprint-orb span {
-  font-size: 78px;
+  font-size: clamp(48px, 9vh, 72px);
   line-height: 1;
   transform: rotate(90deg);
   text-shadow: 0 0 25px #ee2046;
