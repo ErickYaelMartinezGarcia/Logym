@@ -17,6 +17,8 @@ pub fn iniciar(app: AppHandle) {
     std::thread::spawn(move || {
         let mut ultimo_id: Option<i64> = None;
         let mut ultimo_instante = std::time::Instant::now() - Duration::from_secs(10);
+        let mut fallos = 0u32;
+        let mut ultimo_aviso = std::time::Instant::now() - Duration::from_secs(60);
         loop {
             if crate::licencia::verificar(&app).is_err() {
                 std::thread::sleep(Duration::from_secs(2));
