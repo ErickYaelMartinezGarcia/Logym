@@ -121,6 +121,22 @@ fn asegurar_columna(conexion: &Connection, col: &str, def: &str) -> Result<(), S
         CREATE INDEX IF NOT EXISTS idx_pagos_fecha ON pagos(fecha_pago);
         CREATE INDEX IF NOT EXISTS idx_pagos_cliente ON pagos(cliente_id);
     "#).map_err(|e| e.to_string())?;
+    conexion.execute_batch(r#"
+        CREATE TABLE IF NOT EXISTS administrador (
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            password_hash TEXT NOT NULL
+        );
+        INSERT OR IGNORE INTO tipos_membresia(nombre,duracion_meses,precio_centavos) VALUES
+            ('Mensual',1,35000),
+            ('Pareja',1,30000),
+            ('Estudiante',1,28000),
+            ('Bimestral',2,65000),
+            ('Semestral',6,180000);
+        UPDATE configuracion_cobros SET inscripcion_centavos=15000
+        WHERE id=1 AND NOT EXISTS(SELECT 1 FROM pagos)
+          AND NOT EXISTS(SELECT 1 FROM administrador)
+          AND inscripcion_centavos=0;
+    "#).map_err(|e| e.to_string())?;
     Ok(())
 }
 
