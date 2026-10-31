@@ -10,7 +10,7 @@ const confirmar = ref('')
 const mensaje = ref('')
 const planes = ref([])
 const inscripcion = ref(0)
-const nuevo = ref({ nombre:'', meses:1, precio_centavos:0, activo:true })
+const nuevo = ref({ nombre:'', meses:1, precio_pesos:0, activo:true })
 const moneda = n => (n/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'})
 const aCentavos = n => Math.round(Number(n)*100)
 async function cargar() {
@@ -39,7 +39,7 @@ async function guardarPlan(plan) {
   } catch(e) { mensaje.value=String(e) }
 }
 async function crearPlan() {
-  await guardarPlan({...nuevo.value,precio_pesos:nuevo.value.precio_centavos/100})
+  await guardarPlan(nuevo.value)
 }
 async function guardarInscripcion() {
   try {
@@ -82,10 +82,10 @@ onMounted(async () => {
         <div class="plan-row">
           <label>Nombre <input v-model="nuevo.nombre" maxlength="60" /></label>
           <label>Meses <input v-model.number="nuevo.meses" type="number" min="1" max="36" /></label>
-          <label>Precio MXN <input v-model.number="nuevo.precio_centavos" type="number" min="0" step="100" /></label>
+          <label>Precio MXN <input v-model.number="nuevo.precio_pesos" type="number" min="0" step="0.01" /></label>
           <button @click="crearPlan">Crear plan</button>
         </div>
-        <p class="muted">Precio del nuevo plan expresado en centavos.</p>
+
       </section>
       <button class="lock-button" @click="autorizado=false;password=''">Bloquear administración</button>
     </template>
