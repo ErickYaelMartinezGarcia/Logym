@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router'
 
 const route = useRoute()
 const menuAbierto = ref(false)
+const infoAbierta = ref(false)
+const version = '0.1.0'
 
 const enlaces = [
    { to: '/dashboard', label: 'Dashboard', caption: 'Actividad del gimnasio', icon: 'grid' },
@@ -51,12 +53,33 @@ function cerrarMenu() {
         </router-link>
       </nav>
 
+      <div style="margin-top:auto;padding:16px 12px 6px">
+        <button type="button" @click="infoAbierta = true; cerrarMenu()" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;border:1px solid #323b46;border-radius:12px;background:#151b22;color:#e7edf3;cursor:pointer;text-align:left">
+          <span aria-hidden="true" style="display:grid;place-items:center;width:25px;height:25px;border:1px solid #687786;border-radius:50%;font-weight:800">i</span>
+          <span>Información del sistema</span>
+        </button>
+      </div>
       <div class="drawer-footer">
         <span class="status-dot"></span>
         <span>Sistema operativo</span>
         <small>v0.1</small>
       </div>
     </aside>
+
+    <div v-if="infoAbierta" role="presentation" style="position:fixed;inset:0;background:#000b;z-index:300;display:grid;place-items:center;padding:20px" @click.self="infoAbierta = false">
+      <section role="dialog" aria-modal="true" aria-labelledby="info-titulo" style="width:min(430px,100%);background:#161b22;color:#f3f6f9;border:1px solid #36404b;border-radius:18px;padding:25px;box-shadow:0 22px 60px #0009">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <h2 id="info-titulo" style="font-size:21px;font-weight:800">Acerca de Logym</h2>
+          <button type="button" aria-label="Cerrar información" @click="infoAbierta = false" style="font-size:26px;color:#d9e1ea;background:none;border:0;cursor:pointer">×</button>
+        </div>
+        <dl style="display:grid;grid-template-columns:auto 1fr;gap:13px 16px;margin-top:23px;font-size:14px">
+          <dt style="color:#aab5c2">Versión</dt><dd>{{ version }}</dd>
+          <dt style="color:#aab5c2">Creador</dt><dd>Erick Yael Martinez Garcia</dd>
+          <dt style="color:#aab5c2">Soporte</dt><dd>Correo de soporte: pendiente de configurar</dd>
+          <dt style="color:#aab5c2">Nombre</dt><dd><strong>Virtus Gym Sistem</strong></dd>
+        </dl>
+      </section>
+    </div>
 
     <div class="app-content">
       <header class="topbar">
