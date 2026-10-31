@@ -27,7 +27,7 @@ pub fn listar_clientes(conexion: &Connection) -> Result<Vec<ClienteTabla>, Strin
 /// Lista clientes activos e inactivos para su administración.
 pub fn listar_clientes_membresia(conexion: &Connection) -> Result<Vec<ClienteMembresia>, String> {
     let mut stmt = conexion.prepare(
-        "SELECT id, nombre, COALESCE(telefono,''), COALESCE(fecha_fin_membresia,''), CAST(julianday(fecha_fin_membresia) - julianday(date('now','localtime')) AS INTEGER), activo, COALESCE(telefono_emergencia,''), COALESCE(fecha_registro,''), COALESCE(fecha_inicio_membresia,'') FROM clientes ORDER BY nombre"
+        "SELECT id, nombre, COALESCE(telefono,''), COALESCE(fecha_fin_membresia,''), CAST(julianday(date(fecha_fin_membresia)) - julianday(date('now','localtime')) AS INTEGER), activo, COALESCE(telefono_emergencia,''), COALESCE(fecha_registro,''), COALESCE(fecha_inicio_membresia,'') FROM clientes ORDER BY nombre"
     ).map_err(|e| e.to_string())?;
     let rows = stmt.query_map([], |r| {
         let dias: Option<i64> = r.get(4)?;
@@ -57,7 +57,7 @@ pub fn registrar_asistencia(conexion: &Connection, cliente_id: i64) -> Result<St
         |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?.unwrap_or(0))),
     ).map_err(|_| "Cliente no encontrado".to_string())?;
     if cliente.0 != 1 { return Err("Acceso denegado: cliente desactivado".into()); }
-    if cliente.1 != 1 { return Err("Acceso denegado: membresía no vigente".into()); }
+    if cliente.1 != 1 { return Err("Acceso denegado: la fecha actual está fuera del periodo de membresía".into()); }
 
     let n = conexion.execute(
         "INSERT INTO asistencias (cliente_id, fecha_hora)
