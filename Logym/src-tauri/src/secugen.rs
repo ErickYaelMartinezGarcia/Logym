@@ -55,12 +55,15 @@ pub struct SgfpmApi {
 static FP_LIB: OnceLock<Library> = OnceLock::new();
 static API: OnceLock<SgfpmApi> = OnceLock::new();
 static GLOBAL_MANAGER: OnceLock<Mutex<SafeHsgfpm>> = OnceLock::new();
+static INIT_LOCK: Mutex<()> = Mutex::new(());
 static GLOBAL_INFO: OnceLock<DeviceInfo> = OnceLock::new();
 
 pub struct SecuGenController { pub bin_path: PathBuf }
 
 impl SecuGenController {
     pub fn from_bin_path(bin_path: &Path) -> Result<Self, String> {
+        // Serializa la inicialización del SDK frente al worker y comandos Tauri.
+        let _init_guard = INIT_LOCK.lock().map_err(|e| e.to_string())?;
         if GLOBAL_MANAGER.get().is_none() {
             println!("[INIT] Cargando motor SecuGen desde: {}", bin_path.display());
         }
