@@ -103,7 +103,19 @@ pub fn obtener_metricas(conexion: &Connection) -> Result<Metricas, String> {
 
 /// Modifica únicamente datos administrativos; la huella queda intacta.
 pub fn actualizar_cliente(conn: &Connection, id: i64, datos: ActualizacionCliente) -> Result<(), String> {
-    if datos.nombre.trim().is_empty() { return Err("El nombre es obligatorio".into()); }
+    if datos.nombre.trim().is_empty() || datos.nombre.chars().count() > 120 || datos.nombre.chars().any(char::is_control) {
+        return Err("Nombre inválido".into());
+    }
+    for telefono in [&datos.telefono, &datos.telefono_emergencia] {
+        if telefono.len() > 25 || !telefono.chars().all(|ch| ch.is_ascii_digit() || "+- ()".contains(ch)) {
+            return Err("Teléfono inválido".into());
+        }
+    }
+    for fecha in [&datos.fecha_inicio_membresia, &datos.fecha_fin_membresia] {
+        if fecha.len() != 10 || chrono::NaiveDate::parse_from_str(fecha, "%Y-%m-%d").is_err() {
+            return Err("Fecha de membresía inválida".into());
+        }
+    }
     if datos.fecha_fin_membresia < datos.fecha_inicio_membresia { return Err("La fecha final debe ser posterior a la inicial".into()); }
     let changed = conn.execute("UPDATE clientes SET nombre=?1, telefono=?2, telefono_emergencia=?3, fecha_inicio_membresia=?4, fecha_fin_membresia=?5 WHERE id=?6",
         params![datos.nombre.trim(), datos.telefono.trim(), datos.telefono_emergencia.trim(), datos.fecha_inicio_membresia, datos.fecha_fin_membresia, id]).map_err(|e| e.to_string())?;
