@@ -24,6 +24,8 @@ pub fn iniciar(app: AppHandle) {
             }
             match crate::services::buscar_cliente_por_huella(&app) {
                 Ok(Some(cliente)) => {
+                    // El registro puede haber pausado el lector durante la captura.
+                    if PAUSADO.load(Ordering::SeqCst) { continue; }
                     // Evita reintentos al mantener el dedo sobre el sensor.
                     if ultimo_id == Some(cliente.id) && ultimo_instante.elapsed() < Duration::from_secs(6) {
                         std::thread::sleep(Duration::from_millis(500));
