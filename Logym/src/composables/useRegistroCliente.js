@@ -60,8 +60,8 @@ export function useRegistroCliente() {
       return
     }
     const telefonoValido = (valor) => valor.trim().length <= 25 && /^[0-9+() -]*$/.test(valor.trim())
-    if (nombre.value.trim().length > 120 || /[\\x00-\\x1f\\x7f]/.test(nombre.value)) {
-      mostrarMensaje('El nombre debe tener máximo 120 caracteres y no contener controles.', 'error')
+    if (nombre.value.trim().length > 120 || [...nombre.value].some(ch => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)) {
+      mostrarMensaje('El nombre debe tener máximo 120 caracteres y no contener caracteres de control.', 'error')
       return
     }
     if (!telefonoValido(telefono.value) || !telefonoValido(telefonoEmergencia.value)) {
