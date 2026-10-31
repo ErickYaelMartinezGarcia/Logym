@@ -124,3 +124,9 @@ pub fn obtener_asistencias_periodo(app: AppHandle, periodo: String) -> Result<i6
     licencia::verificar(&app)?;
     crate::membresias::asistencias_periodo(&crate::database::abrir_db(&app)?,&periodo)
 }
+
+#[tauri::command]
+pub fn listar_planes_admin(app: AppHandle, password: String) -> Result<Vec<crate::membresias::TipoMembresia>,String> {
+ licencia::verificar(&app)?;
+ crate::membresias::listar_admin(&crate::database::abrir_db(&app)?,&password)
+}
