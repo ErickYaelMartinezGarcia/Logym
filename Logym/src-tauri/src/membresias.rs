@@ -23,17 +23,19 @@ pub struct ResumenIngresos {
 pub fn listar(conn: &Connection) -> Result<Vec<TipoMembresia>, String> {
     let mut stmt = conn.prepare("SELECT id,nombre,duracion_meses,precio_centavos,activo,solo_alta FROM tipos_membresia WHERE activo=1 ORDER BY nombre")
         .map_err(|e| e.to_string())?;
-    stmt.query_map([], |r| Ok(TipoMembresia {
+    let resultado = stmt.query_map([], |r| Ok(TipoMembresia {
         id: r.get(0)?, nombre: r.get(1)?, duracion_meses: r.get(2)?, precio_centavos: r.get(3)?, activo: r.get::<_,i64>(4)? != 0, solo_alta: r.get::<_,i64>(5)? != 0,
-    })).map_err(|e| e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e| e.to_string())
+    })).map_err(|e| e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e| e.to_string());
+    resultado
 }
 
 pub fn listar_admin(conn: &Connection, password: &str) -> Result<Vec<TipoMembresia>,String> {
     autenticar(conn,password)?;
     let mut stmt = conn.prepare("SELECT id,nombre,duracion_meses,precio_centavos,activo,solo_alta FROM tipos_membresia ORDER BY nombre").map_err(|e|e.to_string())?;
-    stmt.query_map([],|r| Ok(TipoMembresia {
+    let resultado = stmt.query_map([],|r| Ok(TipoMembresia {
         id:r.get(0)?,nombre:r.get(1)?,duracion_meses:r.get(2)?,precio_centavos:r.get(3)?,activo:r.get::<_,i64>(4)? != 0,solo_alta:r.get::<_,i64>(5)? != 0
-    })).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())
+    })).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string());
+    resultado
 }
 
 pub fn inscripcion(conn: &Connection) -> Result<i64, String> {
