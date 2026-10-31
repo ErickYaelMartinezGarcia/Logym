@@ -40,7 +40,7 @@ pub fn listar_clientes_membresia(conexion: &Connection) -> Result<Vec<ClienteMem
         Ok(ClienteMembresia {
             id: r.get(0)?, nombre: r.get(1)?, telefono: r.get(2)?,
             fecha_fin_membresia: r.get(3)?, dias_restantes: dias.unwrap_or(0),
-            estado, activo: r.get::<_, i64>(5)? != 0,
+            estado_membresia: estado, activo: r.get::<_, i64>(5)? != 0,
             telefono_emergencia: r.get(6)?, fecha_registro: r.get(7)?,
             fecha_inicio_membresia: r.get(8)?
         })
@@ -49,8 +49,8 @@ pub fn listar_clientes_membresia(conexion: &Connection) -> Result<Vec<ClienteMem
 }
 
 pub fn registrar_asistencia(conexion: &Connection, cliente_id: i64) -> Result<String, String> {
-    let n = conexion.execute("INSERT INTO asistencias (cliente_id, fecha_hora) SELECT ?1, datetime('now','localtime') AND EXISTS (SELECT 1 FROM clientes WHERE id = ?1 AND activo = 1 AND date(fecha_fin_membresia) >= date('now','localtime')) AND NOT EXISTS (SELECT 1 FROM asistencias WHERE cliente_id = ?1 AND date(fecha_hora) = date('now','localtime'))", params![cliente_id]).map_err(|e| e.to_string())?;
-    if n == 0 { return Err("Ya registró asistencia hoy".into()) }
+    let n = conexion.execute("INSERT INTO asistencias (cliente_id, fecha_hora) SELECT ?1, datetime('now','localtime') WHERE EXISTS (SELECT 1 FROM clientes WHERE id = ?1 AND activo = 1 AND date(fecha_fin_membresia) >= date('now','localtime')) AND NOT EXISTS (SELECT 1 FROM asistencias WHERE cliente_id = ?1 AND date(fecha_hora) = date('now','localtime'))", params![cliente_id]).map_err(|e| e.to_string())?;
+    if n == 0 { return Err("Acceso denegado: cliente inactivo, membresía vencida o asistencia ya registrada hoy".into()) }
     Ok("Asistencia registrada".into())
 }
 
