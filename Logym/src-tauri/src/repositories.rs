@@ -48,9 +48,27 @@ pub fn listar_clientes_membresia(conexion: &Connection) -> Result<Vec<ClienteMem
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
+/// Registra una sola asistencia por cliente y día, únicamente si tiene acceso vigente.
+/// Usa la misma fecha local para escritura y consulta del dashboard.
 pub fn registrar_asistencia(conexion: &Connection, cliente_id: i64) -> Result<String, String> {
-    let n = conexion.execute("INSERT INTO asistencias (cliente_id, fecha_hora) SELECT ?1, datetime('now','localtime') WHERE EXISTS (SELECT 1 FROM clientes WHERE id = ?1 AND activo = 1 AND date(fecha_fin_membresia) >= date('now','localtime')) AND NOT EXISTS (SELECT 1 FROM asistencias WHERE cliente_id = ?1 AND date(fecha_hora) = date('now','localtime'))", params![cliente_id]).map_err(|e| e.to_string())?;
-    if n == 0 { return Err("Acceso denegado: cliente inactivo, membresía vencida o asistencia ya registrada hoy".into()) }
+    let cliente = conexion.query_row(
+        "SELECT activo, date(fecha_inicio_membresia) <= date('now','localtime') AND date(fecha_fin_membresia) >= date('now','localtime') FROM clientes WHERE id = ?1",
+        params![cliente_id],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?.unwrap_or(0))),
+    ).map_err(|_| "Cliente no encontrado".to_string())?;
+    if cliente.0 != 1 { return Err("Acceso denegado: cliente desactivado".into()); }
+    if cliente.1 != 1 { return Err("Acceso denegado: membresía no vigente".into()); }
+
+    let n = conexion.execute(
+        "INSERT INTO asistencias (cliente_id, fecha_hora)
+         SELECT ?1, datetime('now','localtime')
+         WHERE NOT EXISTS (
+             SELECT 1 FROM asistencias
+             WHERE cliente_id = ?1 AND date(fecha_hora) = date('now','localtime')
+         )",
+        params![cliente_id],
+    ).map_err(|e| format!("No se pudo guardar la asistencia: {e}"))?;
+    if n == 0 { return Err("Ya registró asistencia hoy".into()); }
     Ok("Asistencia registrada".into())
 }
 
