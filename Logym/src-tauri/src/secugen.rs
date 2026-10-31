@@ -150,7 +150,7 @@ impl SecuGenController {
         let api = get_api(&self.bin_path)?;
         let guard = GLOBAL_MANAGER.get().ok_or("No init")?.lock().map_err(|e| e.to_string())?;
         unsafe {
-            let mut stmt = conexion.prepare("SELECT id, template_huella FROM clientes WHERE COALESCE(template_huella, '') <> ''").map_err(|e| e.to_string())?;
+            let mut stmt = conexion.prepare("SELECT id, template_huella FROM clientes WHERE activo = 1 AND COALESCE(template_huella, '') <> ''").map_err(|e| e.to_string())?;
             let lista: Vec<(i64, String)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
             for (id, hex) in lista {
                 let mut stored = match hex_decode(&hex) { Ok(v) => v, Err(_) => continue };
