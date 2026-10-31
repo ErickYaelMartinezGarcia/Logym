@@ -75,3 +75,18 @@ pub fn comparar_huella(app: &AppHandle, t1: &str, t2: &str) -> Result<bool, Stri
     let controller = secugen::SecuGenController::from_bin_path(&bin_path)?;
     controller.comparar_templates(t1, t2)
 }
+
+/// Operaciones administrativas centralizadas: UI -> comando -> servicio -> repositorio.
+pub fn actualizar_cliente(app: &AppHandle, id: i64, datos: ActualizacionCliente) -> Result<(), String> {
+    let conn = database::abrir_db(app)?;
+    repositories::actualizar_cliente(&conn, id, datos)
+}
+pub fn establecer_cliente_activo(app: &AppHandle, id: i64, activo: bool) -> Result<(), String> {
+    let conn = database::abrir_db(app)?;
+    repositories::establecer_cliente_activo(&conn, id, activo)
+}
+pub fn eliminar_cliente_definitivamente(app: &AppHandle, id: i64, confirmacion: String) -> Result<(), String> {
+    if confirmacion != "ELIMINAR" { return Err("Confirmación de eliminación inválida".into()); }
+    let mut conn = database::abrir_db(app)?;
+    repositories::eliminar_cliente_definitivamente(&mut conn, id)
+}
