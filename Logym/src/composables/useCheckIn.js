@@ -2,7 +2,6 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   buscarClientePorHuella,
-  capturarHuella,
   inicializarBaseDeDatos,
   registrarAsistencia,
   renovarMembresia
@@ -19,7 +18,6 @@ export function useCheckIn() {
   const confirmandoRenovacion = ref(false)
   const lectorActivo = ref(false)
   const lecturaAutomatica = ref(true)
-  const ultimoTemplate = ref('')
   const capturaEnCurso = ref(false)
   let intervaloLector = null
   let reinicioEstado = null
@@ -56,20 +54,9 @@ async function capturarAcceso(forzar = false) {
     estadoCheckin.value = 'processing'
     mensaje.value = 'Leyendo huella...'
 
-    const template = await capturarHuella()
+    // Una sola captura: el backend identifica el template recién obtenido.
+    const cliente = await buscarClientePorHuella()
     lectorActivo.value = true
-
-    // Si es la misma huella que ya leíste hace <3s, ignorala
-    if (!forzar && template === ultimoTemplate.value) {
-      mensaje.value = 'Quita el dedo del lector...'
-      // Forzamos 2.5s de espera para que quite el dedo
-      await new Promise(r => setTimeout(r, 2500))
-      return
-    }
-    ultimoTemplate.value = template
-
-    mensaje.value = 'Buscando en la base local...'
-    const cliente = await buscarClientePorHuella(template)
 
     if (!cliente) {
       clienteDetectado.value = null
@@ -98,7 +85,6 @@ async function capturarAcceso(forzar = false) {
       estadoCheckin.value = 'success'
       // Si fue éxito, dale 4 segundos para que se vaya
       await new Promise(r => setTimeout(r, 4000))
-      ultimoTemplate.value = null // Resetea para que pueda volver a entrar
     }
 
   } catch (error) {
