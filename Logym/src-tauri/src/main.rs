@@ -23,7 +23,6 @@ fn main() {
     }));
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_sql::Builder::default().build())
         .setup(|app| {
             let resource_dir = app.path_resolver().resource_dir().unwrap_or_else(|| PathBuf::from("."));
             println!("[INIT] resource_dir: {}", resource_dir.display());
