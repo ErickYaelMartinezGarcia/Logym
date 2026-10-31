@@ -52,8 +52,29 @@ pub fn buscar_cliente_por_huella(app: &AppHandle) -> Result<Option<ClienteCheckI
 pub fn registrar_asistencia(app: &AppHandle, cliente_id: i64) -> Result<String, String> {
     let conn = database::abrir_db(app)?; repositories::registrar_asistencia(&conn, cliente_id)
 }
-pub fn renovar_membresia(app: &AppHandle, datos: DatosRenovacion) -> Result<String, String> {
-    let conn = database::abrir_db(app)?; repositories::renovar_membresia(&conn, datos.cliente_id)
+pub fn renovar_membresia(app: &AppHandle, datos: DatosRenovacion) -> Result<ClienteCheckIn, String> {
+    let conn = database::abrir_db(app)?;
+    repositories::renovar_membresia(&conn, datos.cliente_id)?;
+    obtener_cliente_checkin(&conn, datos.cliente_id)
+}
+
+/// Consulta un expediente completo desde SQLite para evitar datos obsoletos en Vue.
+fn obtener_cliente_checkin(conn: &rusqlite::Connection, id: i64) -> Result<ClienteCheckIn, String> {
+    conn.query_row(
+        "SELECT id, nombre, COALESCE(telefono,''), COALESCE(telefono_emergencia,''), COALESCE(foto_base64,''), COALESCE(fecha_registro,''), COALESCE(fecha_inicio_membresia,''), COALESCE(fecha_fin_membresia,''), CAST(julianday(fecha_fin_membresia)-julianday(date('now','localtime')) AS INTEGER) FROM clientes WHERE id=?1 AND activo=1",
+        params![id],
+        |r| {
+            let dias = r.get::<_, Option<i64>>(8)?.unwrap_or(-1);
+            Ok(ClienteCheckIn {
+                id: r.get(0)?, nombre: r.get(1)?, telefono: r.get(2)?,
+                telefono_emergencia: r.get(3)?, foto_base64: r.get(4)?,
+                fecha_registro: r.get(5)?, fecha_inicio_membresia: r.get(6)?,
+                fecha_fin_membresia: r.get(7)?,
+                estado_membresia: (if dias < 0 { "vencida" } else if dias <= 7 { "por_vencer" } else { "activa" }).to_string(),
+                dias_restantes: dias,
+            })
+        },
+    ).map_err(|e| e.to_string())
 }
 pub fn obtener_metricas(app: &AppHandle) -> Result<Metricas, String> {
     let conn = database::abrir_db(app)?; repositories::obtener_metricas(&conn)
