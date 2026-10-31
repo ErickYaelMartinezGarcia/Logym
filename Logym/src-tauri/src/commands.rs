@@ -89,3 +89,38 @@ pub fn resumen_ingresos(app: AppHandle, periodo: String) -> Result<crate::membre
     let conn = crate::database::abrir_db(&app)?;
     crate::membresias::ingresos(&conn, &periodo)
 }
+
+#[tauri::command]
+pub fn admin_configurado(app: AppHandle) -> Result<bool,String> {
+    licencia::verificar(&app)?;
+    crate::membresias::tiene_administrador(&crate::database::abrir_db(&app)?)
+}
+#[tauri::command]
+pub fn crear_password_admin(app: AppHandle, password: String) -> Result<(),String> {
+    licencia::verificar(&app)?;
+    crate::membresias::configurar_administrador(&crate::database::abrir_db(&app)?,&password)
+}
+#[tauri::command]
+pub fn validar_password_admin(app: AppHandle, password: String) -> Result<(),String> {
+    licencia::verificar(&app)?;
+    crate::membresias::autenticar(&crate::database::abrir_db(&app)?,&password)
+}
+#[tauri::command]
+pub fn guardar_plan_admin(app: AppHandle, password: String, id: Option<i64>, nombre: String, meses: i64, precio_centavos: i64, activo: bool) -> Result<(),String> {
+    licencia::verificar(&app)?;
+    crate::membresias::actualizar_plan(&crate::database::abrir_db(&app)?,&password,id,&nombre,meses,precio_centavos,activo)?;
+    let _ = app.emit_all("logym://datos-actualizados","precios");
+    Ok(())
+}
+#[tauri::command]
+pub fn guardar_inscripcion_admin(app: AppHandle, password: String, precio_centavos: i64) -> Result<(),String> {
+    licencia::verificar(&app)?;
+    crate::membresias::actualizar_inscripcion(&crate::database::abrir_db(&app)?,&password,precio_centavos)?;
+    let _ = app.emit_all("logym://datos-actualizados","precios");
+    Ok(())
+}
+#[tauri::command]
+pub fn obtener_asistencias_periodo(app: AppHandle, periodo: String) -> Result<i64,String> {
+    licencia::verificar(&app)?;
+    crate::membresias::asistencias_periodo(&crate::database::abrir_db(&app)?,&periodo)
+}
