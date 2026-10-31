@@ -23,3 +23,7 @@ export const compararHuella = (t1, t2) => ejecutar('comparar_huella', {
   t1: t1,
   t2: t2
 })
+
+export const actualizarCliente = (id, datos) => ejecutar('actualizar_cliente', { id, datos })
+export const establecerClienteActivo = (id, activo) => ejecutar('establecer_cliente_activo', { id, activo })
+export const eliminarClienteDefinitivamente = (id, confirmacion) => ejecutar('eliminar_cliente_definitivamente', { id, confirmacion })
