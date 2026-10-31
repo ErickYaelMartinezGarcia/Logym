@@ -127,20 +127,10 @@ async function capturarAcceso(forzar = false) {
     if (!clienteDetectado.value) return
     try {
       procesandoRenovacion.value = true
-      await renovarMembresia(clienteDetectado.value.id)
-      const hoy = new Date()
-      const fin = new Date(hoy)
-      fin.setDate(fin.getDate() + 30)
-      const fechaLocal = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
-      clienteDetectado.value = {
-        ...clienteDetectado.value,
-        fecha_inicio_membresia: fechaLocal(hoy),
-        fecha_fin_membresia: fechaLocal(fin),
-        dias_restantes: 30,
-        estado_membresia: 'activa'
-      }
+      clienteDetectado.value = await renovarMembresia(clienteDetectado.value.id)
+      estadoCheckin.value = 'success'
       confirmandoRenovacion.value = false
-      mensaje.value = `Membresía renovada para ${clienteDetectado.value.nombre}. Nuevo inicio: ${formatearFecha(clienteDetectado.value.fecha_inicio_membresia)}.`
+      mensaje.value = `Membresía renovada para ${clienteDetectado.value.nombre}. Vigente hasta ${formatearFecha(clienteDetectado.value.fecha_fin_membresia)}.`
     } catch (error) {
       console.error('Error al renovar:', error)
       mensaje.value = 'No se pudo renovar la membresía. Intenta de nuevo.'
