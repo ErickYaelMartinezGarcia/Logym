@@ -52,14 +52,6 @@ export function useRegistroCliente() {
       mostrarMensaje('La fecha de fin no puede ser anterior al inicio de membresía.', 'error')
       return
     }
-    // en useRegistroCliente.js - dentro de guardar()
-try {
-  const existente = await buscarPorHuella(template1.value) // te regresa id o null
-  if (existente) {
-    mostrarMensaje('Esa huella ya está registrada con otro miembro.', 'error')
-    return
-  }
-} catch {}
     try {
       const huellasCoinciden = await compararHuella(template1.value, template2.value)
       if (!huellasCoinciden) {
