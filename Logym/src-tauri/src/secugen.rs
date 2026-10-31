@@ -13,9 +13,6 @@ pub const SG_TEMPLATE_FORMAT_SG400: u16 = 0x0200;
 pub const SG_SECURITY_LEVEL_NORMAL: u32 = 3;
 pub const SG_TEMPLATE_SIZE: usize = 400;
 pub const SGFDX_ERROR_NONE: u32 = 0;
-pub const WM_APP_SGAUTOONEVENT: u32 = 0x8100;
-pub const SGDEVEVNET_FINGER_OFF: u16 = 0;
-pub const SGDEVEVNET_FINGER_ON: u16 = 1;
 
 // ==========================================
 // TIPOS FFI
@@ -23,7 +20,6 @@ pub const SGDEVEVNET_FINGER_ON: u16 = 1;
 pub type HSGFPM = *mut c_void;
 pub type DWORD = u32;
 pub type BOOL = i32;
-pub type HWND = *mut c_void;
 
 #[repr(C)] #[derive(Clone, Copy)] pub struct DeviceList { pub dev_name: DWORD, pub dev_id: DWORD, pub dev_type: u16, pub dev_sn: [u8; 16], }
 #[repr(C)] #[derive(Default, Clone, Copy)] pub struct DeviceInfo { pub device_id: DWORD, pub device_sn: [u8; 16], pub com_port: DWORD, pub com_speed: DWORD, pub image_width: DWORD, pub image_height: DWORD, pub contrast: DWORD, pub brightness: DWORD, pub gain: DWORD, pub image_dpi: DWORD, pub fw_version: DWORD, }
@@ -35,33 +31,25 @@ unsafe impl Send for SafeHsgfpm {}
 unsafe impl Sync for SafeHsgfpm {}
 
 type FnCreate = unsafe extern "system" fn(*mut HSGFPM) -> DWORD;
-type FnTerminate = unsafe extern "system" fn(HSGFPM) -> DWORD;
 type FnInit = unsafe extern "system" fn(HSGFPM, DWORD) -> DWORD;
 type FnSetTemplateFormat = unsafe extern "system" fn(HSGFPM, u16) -> DWORD;
 type FnEnumerateDevice = unsafe extern "system" fn(HSGFPM, *mut DWORD, *mut *mut DeviceList) -> DWORD;
 type FnOpenDevice = unsafe extern "system" fn(HSGFPM, DWORD) -> DWORD;
-type FnCloseDevice = unsafe extern "system" fn(HSGFPM) -> DWORD;
 type FnGetDeviceInfo = unsafe extern "system" fn(HSGFPM, *mut DeviceInfo) -> DWORD;
 type FnGetImageEx = unsafe extern "system" fn(HSGFPM, *mut u8, DWORD, *mut c_void, DWORD) -> DWORD;
-type FnGetMaxTemplateSize = unsafe extern "system" fn(HSGFPM, *mut DWORD) -> DWORD;
 type FnCreateTemplate = unsafe extern "system" fn(HSGFPM, *mut c_void, *mut u8, *mut u8) -> DWORD;
 type FnMatchTemplate = unsafe extern "system" fn(HSGFPM, *mut u8, *mut u8, DWORD, *mut BOOL) -> DWORD;
-type FnEnableAutoOnEvent = unsafe extern "system" fn(HSGFPM, BOOL, HWND, *mut c_void) -> DWORD;
 
 pub struct SgfpmApi {
     pub create: Symbol<'static, FnCreate>,
-    pub terminate: Symbol<'static, FnTerminate>,
     pub init: Symbol<'static, FnInit>,
     pub set_template_format: Symbol<'static, FnSetTemplateFormat>,
     pub enumerate_device: Symbol<'static, FnEnumerateDevice>,
     pub open_device: Symbol<'static, FnOpenDevice>,
-    pub close_device: Symbol<'static, FnCloseDevice>,
     pub get_device_info: Symbol<'static, FnGetDeviceInfo>,
     pub get_image_ex: Symbol<'static, FnGetImageEx>,
-    pub get_max_template_size: Symbol<'static, FnGetMaxTemplateSize>,
     pub create_template: Symbol<'static, FnCreateTemplate>,
     pub match_template: Symbol<'static, FnMatchTemplate>,
-    pub enable_auto_on_event: Symbol<'static, FnEnableAutoOnEvent>,
 }
 
 static FP_LIB: OnceLock<Library> = OnceLock::new();
@@ -99,17 +87,6 @@ impl SecuGenController {
             }
         }
         Ok(Self { bin_path: bin_path.to_path_buf() })
-    }
-
-    pub fn habilitar_auto_on(&self, hwnd: HWND, activar: bool) -> Result<(), String> {
-        let api = get_api(&self.bin_path)?;
-        let guard = GLOBAL_MANAGER.get().ok_or("Manager no inicializado")?.lock().map_err(|e| e.to_string())?;
-        unsafe {
-            let flag: BOOL = if activar { 1 } else { 0 };
-            check_sdk((api.enable_auto_on_event)(guard.0, flag, hwnd, std::ptr::null_mut()), "SGFPM_EnableAutoOnEvent")?;
-        }
-        println!("[AUTO-ON] {} HWND: {:?}", if activar { "Activado" } else { "Desactivado" }, hwnd);
-        Ok(())
     }
 
     // AHORA REGRESA Option: None = no hay dedo (era error 54)
@@ -186,18 +163,14 @@ fn get_api(bin_path: &Path) -> Result<&'static SgfpmApi, String> {
     let api = unsafe {
         SgfpmApi {
             create: lib.get(b"SGFPM_Create\0").map_err(|e| e.to_string())?,
-            terminate: lib.get(b"SGFPM_Terminate\0").map_err(|e| e.to_string())?,
             init: lib.get(b"SGFPM_Init\0").map_err(|e| e.to_string())?,
             set_template_format: lib.get(b"SGFPM_SetTemplateFormat\0").map_err(|e| e.to_string())?,
             enumerate_device: lib.get(b"SGFPM_EnumerateDevice\0").map_err(|e| e.to_string())?,
             open_device: lib.get(b"SGFPM_OpenDevice\0").map_err(|e| e.to_string())?,
-            close_device: lib.get(b"SGFPM_CloseDevice\0").map_err(|e| e.to_string())?,
             get_device_info: lib.get(b"SGFPM_GetDeviceInfo\0").map_err(|e| e.to_string())?,
             get_image_ex: lib.get(b"SGFPM_GetImageEx\0").map_err(|e| e.to_string())?,
-            get_max_template_size: lib.get(b"SGFPM_GetMaxTemplateSize\0").map_err(|e| e.to_string())?,
             create_template: lib.get(b"SGFPM_CreateTemplate\0").map_err(|e| e.to_string())?,
             match_template: lib.get(b"SGFPM_MatchTemplate\0").map_err(|e| e.to_string())?,
-            enable_auto_on_event: lib.get(b"SGFPM_EnableAutoOnEvent\0").map_err(|e| format!("No se encontró EnableAutoOnEvent: {}", e))?,
         }
     };
     Ok(API.get_or_init(|| api))
