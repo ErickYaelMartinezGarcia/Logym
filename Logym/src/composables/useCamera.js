@@ -42,10 +42,16 @@ export function useCamera(mostrarMensaje) {
     canvas.height = video.videoHeight
     canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
     fotoBase64.value = canvas.toDataURL('image/jpeg', 0.86)
-    mostrarMensaje('Foto capturada correctamente.', 'success')
+    detenerCamara()
+    mostrarMensaje('Foto capturada correctamente. Puedes tomar otra si lo necesitas.', 'success')
+  }
+
+  async function repetirFoto() {
+    fotoBase64.value = ''
+    await iniciarCamara()
   }
 
   onBeforeUnmount(detenerCamara)
 
-  return { videoRef, canvasRef, fotoBase64, camaraActiva, camaraDisponible, iniciarCamara, detenerCamara, capturarFoto }
+  return { videoRef, canvasRef, fotoBase64, camaraActiva, camaraDisponible, iniciarCamara, detenerCamara, capturarFoto, repetirFoto }
 }
