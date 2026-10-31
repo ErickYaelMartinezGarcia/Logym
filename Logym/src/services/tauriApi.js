@@ -16,7 +16,7 @@ export const listarClientesMembresia = () => ejecutar('listar_clientes_membresia
 export const buscarClientePorHuella = () => ejecutar('buscar_cliente_por_huella')
 export const checkIn = () => ejecutar('check_in')
 export const capturarHuella = () => ejecutar('capturar_huella')
-export const registrarAsistencia = (clienteId) => ejecutar('registrar_asistencia', { cliente_id: clienteId })
+export const registrarAsistencia = (clienteId) => ejecutar('registrar_asistencia', { clienteId })
 export const renovarMembresia = (clienteId) => ejecutar('renovar_membresia', {datos: { clienteId }})
 export const obtenerMetricasDashboard = () => ejecutar('obtener_metricas')
 export const compararHuella = (t1, t2) => ejecutar('comparar_huella', {
