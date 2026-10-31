@@ -34,15 +34,8 @@ pub fn listar_clientes_membresia(conexion: &Connection) -> Result<Vec<ClienteMem
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
-// ESTA ES LA BUENA - solo trae datos, no compara
-pub fn listar_con_huella(conexion: &Connection) -> Result<Vec<(i64, String, String, String)>, String> {
-    let mut stmt = conexion.prepare("SELECT id, nombre, telefono, template_huella FROM clientes WHERE template_huella IS NOT NULL AND template_huella != ''").map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).map_err(|e| e.to_string())?;
-    Ok(rows.filter_map(|r| r.ok()).collect())
-}
-
 pub fn registrar_asistencia(conexion: &Connection, cliente_id: i64) -> Result<String, String> {
-    let n = conexion.execute("INSERT INTO asistencias (cliente_id, fecha_hora) SELECT ?1, datetime('now','localtime') WHERE NOT EXISTS (SELECT 1 FROM asistencias WHERE cliente_id = ?1 AND date(fecha_hora) = date('now','localtime'))", params![cliente_id]).map_err(|e| e.to_string())?;
+    let n = conexion.execute("INSERT INTO asistencias (cliente_id, fecha_hora) SELECT ?1, datetime('now','localtime') AND EXISTS (SELECT 1 FROM clientes WHERE id = ?1 AND activo = 1 AND date(fecha_fin_membresia) >= date('now','localtime')) AND NOT EXISTS (SELECT 1 FROM asistencias WHERE cliente_id = ?1 AND date(fecha_hora) = date('now','localtime'))", params![cliente_id]).map_err(|e| e.to_string())?;
     if n == 0 { return Err("Ya registró asistencia hoy".into()) }
     Ok("Asistencia registrada".into())
 }
@@ -55,8 +48,23 @@ pub fn renovar_membresia(conexion: &Connection, cliente_id: i64) -> Result<Strin
     Ok("Renovada 30 días".into())
 }
 
+/// Obtiene indicadores exclusivamente de datos persistidos; nunca valores simulados.
 pub fn obtener_metricas(conexion: &Connection) -> Result<Metricas, String> {
-    let hoy: i64 = conexion.query_row("SELECT COUNT(*) FROM asistencias WHERE date(fecha_hora)=date('now','localtime')", [], |r| r.get(0)).map_err(|e| e.to_string())?;
-    let sem: i64 = conexion.query_row("SELECT COUNT(*) FROM asistencias WHERE date(fecha_hora) >= date('now','-7 day')", [], |r| r.get(0)).map_err(|e| e.to_string())?;
-    Ok(Metricas{ entradas_hoy: hoy, entradas_7_dias: sem, dia_pico: "Lunes".into(), hora_pico: "18:00".into() })
+    fn count(conn: &Connection, sql: &str) -> Result<i64, String> {
+        conn.query_row(sql, [], |row| row.get(0)).map_err(|e| e.to_string())
+    }
+    let total_clientes = count(conexion, "SELECT COUNT(*) FROM clientes WHERE activo = 1")?;
+    let asistencias_hoy = count(conexion, "SELECT COUNT(*) FROM asistencias WHERE date(fecha_hora) = date('now','localtime')")?;
+    let nuevos_semana = count(conexion, "SELECT COUNT(*) FROM clientes WHERE activo = 1 AND date(fecha_registro) >= date('now','localtime','-6 days')")?;
+    let huella_activas = count(conexion, "SELECT COUNT(*) FROM clientes WHERE activo = 1 AND COALESCE(template_huella,'') <> ''")?;
+    let asistencias_ultimos_7_dias = count(conexion, "SELECT COUNT(*) FROM asistencias WHERE date(fecha_hora) BETWEEN date('now','localtime','-6 days') AND date('now','localtime')")?;
+    let dia_mas_concurrido: String = conexion.query_row(
+        "SELECT date(fecha_hora) FROM asistencias WHERE date(fecha_hora) BETWEEN date('now','localtime','-6 days') AND date('now','localtime') GROUP BY date(fecha_hora) ORDER BY COUNT(*) DESC, date(fecha_hora) DESC LIMIT 1",
+        [], |row| row.get(0)
+    ).unwrap_or_else(|_| "Sin datos".to_string());
+    let hora_mayor_afluencia: String = conexion.query_row(
+        "SELECT strftime('%H:00', fecha_hora) FROM asistencias WHERE date(fecha_hora) BETWEEN date('now','localtime','-6 days') AND date('now','localtime') GROUP BY strftime('%H', fecha_hora) ORDER BY COUNT(*) DESC, strftime('%H', fecha_hora) ASC LIMIT 1",
+        [], |row| row.get(0)
+    ).unwrap_or_else(|_| "Sin datos".to_string());
+    Ok(Metricas { total_clientes, asistencias_hoy, nuevos_semana, huella_activas, asistencias_ultimos_7_dias, dia_mas_concurrido, hora_mayor_afluencia })
 }
