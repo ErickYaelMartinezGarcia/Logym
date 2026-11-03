@@ -20,10 +20,10 @@ fn decode(s: &str) -> Result<Vec<u8>, String> {
 
 #[cfg(windows)]
 fn dpapi(bytes: &[u8], protect: bool) -> Result<Vec<u8>, String> {
-    use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, DATA_BLOB, CRYPTPROTECT_UI_FORBIDDEN};
+    use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN};
     use windows_sys::Win32::Foundation::LocalFree;
-    let mut input = DATA_BLOB { cbData: bytes.len() as u32, pbData: bytes.as_ptr() as *mut u8 };
-    let mut output = DATA_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+    let mut input = CRYPT_INTEGER_BLOB { cbData: bytes.len() as u32, pbData: bytes.as_ptr() as *mut u8 };
+    let mut output = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
     let ok = unsafe {
         if protect {
             CryptProtectData(&mut input, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut output)
