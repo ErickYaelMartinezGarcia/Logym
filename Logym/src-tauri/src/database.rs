@@ -20,10 +20,10 @@ fn ruta_db(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 // La clave SQLCipher nunca se expone a Vue ni se almacena en texto plano.
 #[cfg(windows)]
 fn dpapi(datos: &[u8], proteger: bool) -> Result<Vec<u8>, String> {
-    use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, DATA_BLOB, CRYPTPROTECT_UI_FORBIDDEN};
+    use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN};
     use windows_sys::Win32::Foundation::LocalFree;
-    let mut entrada = DATA_BLOB { cbData: datos.len() as u32, pbData: datos.as_ptr() as *mut u8 };
-    let mut salida = DATA_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+    let mut entrada = CRYPT_INTEGER_BLOB { cbData: datos.len() as u32, pbData: datos.as_ptr() as *mut u8 };
+    let mut salida = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
     let ok = unsafe {
         if proteger {
             CryptProtectData(&mut entrada, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut salida)
