@@ -33,7 +33,7 @@ fn dpapi(datos: &[u8], proteger: bool) -> Result<Vec<u8>, String> {
     };
     if ok == 0 { return Err(format!("Windows DPAPI: {}", std::io::Error::last_os_error())); }
     let resultado = unsafe { std::slice::from_raw_parts(salida.pbData, salida.cbData as usize).to_vec() };
-    unsafe { LocalFree(salida.pbData as isize); }
+    unsafe { LocalFree(salida.pbData as *mut std::ffi::c_void); }
     Ok(resultado)
 }
 
