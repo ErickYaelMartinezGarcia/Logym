@@ -33,7 +33,7 @@ fn dpapi(bytes: &[u8], protect: bool) -> Result<Vec<u8>, String> {
     };
     if ok == 0 { return Err(format!("Windows no pudo proteger la identidad: {}", std::io::Error::last_os_error())); }
     let out = unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() };
-    unsafe { LocalFree(output.pbData as isize); }
+    unsafe { LocalFree(output.pbData as *mut std::ffi::c_void); }
     Ok(out)
 }
 
