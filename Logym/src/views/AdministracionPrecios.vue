@@ -3,7 +3,8 @@ import { ref, onMounted } from 'vue'
 import AppShell from '../components/AppShell.vue'
 import { adminConfigurado, crearPasswordAdmin, validarPasswordAdmin, listarPlanesAdmin, obtenerPrecioInscripcion, guardarPlanAdmin, guardarInscripcionAdmin } from '../services/tauriApi'
 
-const configurado = ref(true)
+const configurado = ref(null)
+const consultando = ref(false)
 const autorizado = ref(false)
 const password = ref('')
 const confirmar = ref('')
@@ -18,6 +19,7 @@ async function cargar() {
   inscripcion.value = (await obtenerPrecioInscripcion())/100
 }
 async function entrar() {
+  if (configurado.value === null) return
   mensaje.value=''
   try {
     if (!configurado.value) {
@@ -47,15 +49,30 @@ async function guardarInscripcion() {
     mensaje.value='Precio de inscripción actualizado para los próximos registros.'
   } catch(e) { mensaje.value=String(e) }
 }
-onMounted(async () => {
-  try { configurado.value=await adminConfigurado() }
-  catch(e) { mensaje.value=String(e) }
-})
+async function consultarEstadoAdmin() {
+  consultando.value = true
+  mensaje.value = ''
+  configurado.value = null
+  autorizado.value = false
+  try {
+    configurado.value = await adminConfigurado()
+  } catch (e) {
+    mensaje.value = `No se pudo consultar la configuración administrativa: ${String(e)}`
+  } finally {
+    consultando.value = false
+  }
+}
+onMounted(consultarEstadoAdmin)
 </script>
 <template>
   <AppShell>
     <div class="page-intro"><h1 class="page-title">Administración de precios</h1><p class="muted">Cambios aplicables únicamente a nuevos cobros. Los pagos históricos no cambian.</p></div>
-    <section v-if="!autorizado" class="surface admin-panel">
+    <section v-if="!autorizado && configurado === null" class="surface admin-panel">
+      <h2>Configuración administrativa</h2>
+      <p class="muted">{{ consultando ? "Comprobando si ya existe una contraseña..." : "No se pudo comprobar la contraseña administrativa. Revisa el mensaje de error y vuelve a intentar." }}</p>
+      <button v-if="!consultando" @click="consultarEstadoAdmin">Reintentar</button>
+    </section>
+    <section v-else-if="!autorizado" class="surface admin-panel">
       <h2>{{ configurado?'Contraseña administrativa':'Crear contraseña administrativa' }}</h2>
       <p class="muted">{{ configurado?'Acceso restringido':'Primera configuración: mínimo 12 caracteres. Guarda esta contraseña en un lugar seguro.' }}</p>
       <input v-model="password" type="password" autocomplete="off" placeholder="Contraseña" />
