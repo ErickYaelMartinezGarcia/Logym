@@ -17,8 +17,7 @@ pub fn iniciar(app: AppHandle) {
     std::thread::spawn(move || {
         let mut ultimo_id: Option<i64> = None;
         let mut ultimo_instante = std::time::Instant::now() - Duration::from_secs(10);
-        let mut fallos = 0u32;
-        let mut ultimo_aviso = std::time::Instant::now() - Duration::from_secs(60);
+        let mut ultimo_intento_reconexion = std::time::Instant::now() - Duration::from_secs(10);
         loop {
             if crate::licencia::verificar(&app).is_err() {
                 std::thread::sleep(Duration::from_secs(2));
@@ -61,9 +60,18 @@ pub fn iniciar(app: AppHandle) {
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    // La ausencia de dedo es esperada, no una falla del sistema.
                     if !e.contains("SGFPM_GetImageEx: 54") {
                         eprintln!("[LECTOR] {e}");
+                        if e.contains("SGFPM_GetImageEx") && ultimo_intento_reconexion.elapsed() >= Duration::from_secs(5) {
+                            ultimo_intento_reconexion = std::time::Instant::now();
+                            let recurso = app.path_resolver().resource_dir().unwrap_or_default();
+                            match crate::secugen::resolve_bin_path(&recurso)
+                                .and_then(|path| crate::secugen::SecuGenController::from_bin_path(&path))
+                                .and_then(|lector| lector.reconectar()) {
+                                Ok(()) => println!("[LECTOR] Dispositivo USB reconectado"),
+                                Err(err) => eprintln!("[LECTOR] Reconexion pendiente: {err}"),
+                            }
+                        }
                         std::thread::sleep(Duration::from_secs(2));
                     }
                 }
