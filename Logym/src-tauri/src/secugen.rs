@@ -113,7 +113,7 @@ impl SecuGenController {
         unsafe {
             let image_len = (info.image_width * info.image_height) as usize;
             let mut image = vec![0u8; image_len];
-            let code = (api.get_image_ex)(manager, image.as_mut_ptr(), 2000, std::ptr::null_mut(), 40);
+            let code = (api.get_image_ex)(manager, image.as_mut_ptr(), 4000, std::ptr::null_mut(), 40);
             if code == 54 { // TIMEOUT - no hay dedo
                return Ok(None); // Tiempo de espera normal: no se colocó ningún dedo
             }
