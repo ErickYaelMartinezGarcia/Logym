@@ -1,7 +1,6 @@
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 use std::fs;
-use tauri::Manager;
 
 // Sustituir con la clave PUBLICA del emisor antes de distribuir un release.
 const CLAVE_PUBLICA: &str = include_str!("license_public_key.hex");
