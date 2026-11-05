@@ -14,7 +14,7 @@ use commands::{
     actualizar_cliente, establecer_cliente_activo, eliminar_cliente_definitivamente,
     buscar_cliente_por_huella, capturar_huella, comparar_huella, check_in, guardar_cliente, inicializar_db,
     listar_clientes, listar_clientes_membresia, obtener_metricas,
-    renovar_membresia,
+    renovar_membresia, registrar_asistencia,
 };
 use std::path::PathBuf;
 
@@ -70,6 +70,8 @@ fn main() {
             listar_clientes_membresia,
             buscar_cliente_por_huella,
             renovar_membresia,
+            // API de asistencia invocada desde el frontend; registrarla evita código inaccesible.
+            registrar_asistencia,
             obtener_metricas,
             capturar_huella,
             comparar_huella,
