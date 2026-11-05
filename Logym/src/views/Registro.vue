@@ -7,7 +7,7 @@ const {
   tiposMembresia, tipoMembresiaId, incluirInscripcion, precioInscripcion,
   nombre, telefono, fechaRegistro, fechaInicioMembresia, fechaFinMembresia,
   telefonoEmergencia,
-  template1, template2, mensaje, tipoMensaje, videoRef, canvasRef, fotoBase64,
+  template1, template2, capturandoHuella, guardando, mensaje, tipoMensaje, videoRef, canvasRef, fotoBase64,
   camaraActiva, camaraDisponible, iniciarCamara, detenerCamara, capturarFoto, repetirFoto,
   capturarHuellaCliente, guardar: guardarCliente
 } = registro
@@ -48,8 +48,8 @@ const {
             <strong class="total-cobro">{{ (((tiposMembresia.find(p => String(p.id) === tipoMembresiaId)?.precio_centavos || 0) + (incluirInscripcion ? precioInscripcion : 0)) / 100).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) }}</strong>
           </div>
         </div>
-        <div class="capture-row"><button class="capture-card" :class="{ done: template1 }" @click="capturarHuellaCliente(1)"><span class="capture-icon">01</span><span><strong>{{ template1 ? 'Huella guardada' : 'Primera huella' }}</strong><small>{{ template1 ? 'Captura completa' : 'Coloca el dedo en el lector' }}</small></span><b>›</b></button><button class="capture-card" :class="{ done: template2 }" @click="capturarHuellaCliente(2)"><span class="capture-icon">02</span><span><strong>{{ template2 ? 'Huella confirmada' : 'Confirmación' }}</strong><small>{{ template2 ? 'Captura completa' : 'Repite la misma huella' }}</small></span><b>›</b></button></div>
-        <button class="primary-button" @click="guardarCliente">Guardar miembro <span>→</span></button>
+        <div class="capture-row"><button class="capture-card" :class="{ done: template1 }" :disabled="capturandoHuella || guardando" @click="capturarHuellaCliente(1)"><span class="capture-icon">01</span><span><strong>{{ template1 ? 'Huella guardada' : 'Primera huella' }}</strong><small>{{ template1 ? 'Captura completa' : 'Coloca el dedo en el lector' }}</small></span><b>›</b></button><button class="capture-card" :class="{ done: template2 }" :disabled="!template1 || capturandoHuella || guardando" @click="capturarHuellaCliente(2)"><span class="capture-icon">02</span><span><strong>{{ template2 ? 'Huella confirmada' : 'Confirmación' }}</strong><small>{{ template2 ? 'Captura completa' : 'Repite la misma huella' }}</small></span><b>›</b></button></div>
+        <button class="primary-button" :disabled="guardando || capturandoHuella || !template1 || !template2" @click="guardarCliente">Guardar miembro <span>→</span></button>
         <p class="feedback" :class="`feedback--${tipoMensaje}`">{{ mensaje }}</p>
       </section>
       <section class="surface form-panel">
@@ -73,7 +73,11 @@ const {
 .date-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:6px; }
 .capture-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:25px 0 17px; }
 .capture-card { display:flex; align-items:center; gap:10px; min-width:0; padding:13px 11px; border:1px solid #343941; border-radius:12px; color:#fff; text-align:left; background:#16191e; transition:.2s; }
-.capture-card:hover, .capture-card.done { border-color:#ee2046; }
+.capture-card:hover:not(:disabled) { border-color:#ee2046; }
+.capture-card.done { border-color:#55d996; background:#142820; }
+.capture-card.done .capture-icon { color:#55d996; background:#173b2c; }
+.capture-card:disabled { opacity:.55; cursor:not-allowed; }
+.capture-card.done:disabled { opacity:1; }
 .capture-card b { margin-left:auto; color:#ee2046; font-size:20px; }
 .capture-card strong, .capture-card small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .capture-card strong { font-size:12px; }.capture-card small { margin-top:4px; color:#797f89; font-size:10px; }
