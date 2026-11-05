@@ -15,6 +15,8 @@ export function useRegistroCliente() {
   const fechaFinMembresia = ref('')
   const template1 = ref('')
   const template2 = ref('')
+  const capturandoHuella = ref(false)
+  const guardando = ref(false)
   const mensaje = ref('Completa los datos y captura la biometría')
   const tipoMensaje = ref('neutral')
 
@@ -52,18 +54,49 @@ export function useRegistroCliente() {
   const camera = useCamera(mostrarMensaje)
 
   async function capturarHuellaCliente(numero) {
+    if (capturandoHuella.value || guardando.value) return
+    if (numero === 2 && !template1.value) {
+      mostrarMensaje('Primero captura correctamente la primera huella.', 'error')
+      return
+    }
+    capturandoHuella.value = true
+    mostrarMensaje(`Esperando la huella ${numero}. Coloca el dedo completamente sobre el lector.`)
     try {
       const template = await capturarHuella()
-      if (numero === 1) template1.value = template
-      else template2.value = template
-      mostrarMensaje(`Huella ${numero} capturada. Repite para confirmar la identidad.`, 'success')
+      // El SDK puede devolver null cuando apenas se roza el sensor.
+      // Nunca anunciar éxito ni marcar el botón sin una plantilla real.
+      if (typeof template !== 'string' || !/^[a-fA-F0-9]{800}$/.test(template)) {
+        mostrarMensaje('No se obtuvo una huella válida. Coloca el dedo completo y vuelve a intentar.', 'error')
+        return
+      }
+      if (numero === 1) {
+        template1.value = template
+        template2.value = '' // Una nueva primera huella invalida la confirmación anterior.
+        mostrarMensaje('Primera huella capturada. Retira el dedo y vuelve a colocarlo para confirmar.', 'success')
+      } else {
+        const coincide = await compararHuella(template1.value, template)
+        if (!coincide) {
+          template2.value = ''
+          mostrarMensaje('La segunda huella no coincide con la primera. Retira el dedo e intenta nuevamente.', 'error')
+          return
+        }
+        template2.value = template
+        mostrarMensaje('Segunda huella confirmada. Ya puedes guardar al miembro.', 'success')
+      }
     } catch (error) {
       console.error(`Error al capturar huella ${numero}:`, error)
-      mostrarMensaje('No se pudo capturar la huella. Verifica que el lector y su controlador estén conectados.', 'error')
+      mostrarMensaje(`No se pudo capturar la huella ${numero}: ${String(error)}`, 'error')
+    } finally {
+      capturandoHuella.value = false
     }
   }
 
   async function guardar() {
+    if (guardando.value) return
+    if (capturandoHuella.value) {
+      mostrarMensaje('Espera a que termine la captura de huella.', 'error')
+      return
+    }
     if (!nombre.value.trim() || !template1.value || !template2.value) {
       mostrarMensaje('Completa el nombre y las dos capturas de huella.', 'error')
       return
@@ -86,6 +119,7 @@ export function useRegistroCliente() {
       return
     }
     if (!tipoMembresiaId.value) { mostrarMensaje('Selecciona una membresía.', 'error'); return }
+    guardando.value = true
     try {
       const huellasCoinciden = await compararHuella(template1.value, template2.value)
       if (!huellasCoinciden) {
@@ -116,7 +150,9 @@ export function useRegistroCliente() {
       mostrarMensaje('Miembro registrado. Ya puede utilizar el check-in.', 'success')
     } catch (error) {
       console.error('Error al guardar miembro:', error)
-      mostrarMensaje('No se pudo guardar el miembro. Revisa la base de datos.', 'error')
+      mostrarMensaje(`No se pudo guardar el miembro: ${String(error)}`, 'error')
+    } finally {
+      guardando.value = false
     }
   }
 
@@ -130,7 +166,9 @@ export function useRegistroCliente() {
       await inicializarBaseDeDatos()
       tiposMembresia.value = await listarTiposMembresia()
       precioInscripcion.value = await obtenerPrecioInscripcion()
-      if (tiposMembresia.value.length) tipoMembresiaId.value = String(tiposMembresia.value[0].id)
+      const mensual = tiposMembresia.value.find(p => p.nombre.trim().toLocaleLowerCase('es-MX') === 'mensual')
+      if (mensual) tipoMembresiaId.value = String(mensual.id)
+      else if (tiposMembresia.value.length) tipoMembresiaId.value = String(tiposMembresia.value[0].id)
     } catch (error) {
       mostrarMensaje('No se pudo inicializar la base de datos local.', 'error')
     }
@@ -141,7 +179,7 @@ export function useRegistroCliente() {
   return {
     tiposMembresia, tipoMembresiaId, incluirInscripcion, precioInscripcion,
     nombre, telefono, telefonoEmergencia, fechaRegistro, fechaInicioMembresia, fechaFinMembresia,
-    template1, template2, mensaje, tipoMensaje, mostrarMensaje,
+    template1, template2, capturandoHuella, guardando, mensaje, tipoMensaje, mostrarMensaje,
     ...camera, capturarHuellaCliente, guardar
   }
 }
