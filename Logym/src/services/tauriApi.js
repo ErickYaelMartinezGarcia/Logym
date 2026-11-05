@@ -42,3 +42,5 @@ export const guardarInscripcionAdmin = (password, precioCentavos) => ejecutar('g
 export const obtenerAsistenciasPeriodo = (periodo) => ejecutar('obtener_asistencias_periodo', { periodo })
 
 export const listarPlanesAdmin = (password) => ejecutar('listar_planes_admin', { password })
+
+export const obtenerAsistenciasDiarias = (periodo) => ejecutar('obtener_asistencias_diarias', { periodo })
