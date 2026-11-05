@@ -1,8 +1,9 @@
 <script setup>
 import AppShell from '../components/AppShell.vue'
+import espartano from '../assets/espartano_laurel.svg'
 import { ref, computed, onMounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
-import { resumenIngresos, obtenerAsistenciasPeriodo } from '../services/tauriApi'
+import { resumenIngresos, obtenerAsistenciasPeriodo, obtenerAsistenciasDiarias } from '../services/tauriApi'
 const periodoIngresos = ref('mes')
 const ingresos = ref(null)
 const asistenciasPeriodo = ref(null)
@@ -24,6 +25,35 @@ const {
 
 const asistenciasHoy = computed(() => metricas.value.find(item => item.titulo === 'Entradas de hoy')?.valor ?? '0')
 const miembrosActivos = computed(() => metricas.value.find(item => item.titulo === 'Miembros activos')?.valor ?? '0')
+const periodoGrafica = ref('semana')
+const asistenciasDiarias = ref([])
+const errorGrafica = ref('')
+const diasGrafica = computed(() => {
+  const hoy = new Date()
+  const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+  if (periodoGrafica.value === 'semana') inicio.setDate(inicio.getDate() - 6)
+  if (periodoGrafica.value === 'mes') inicio.setDate(1)
+  const conteos = new Map(asistenciasDiarias.value.map(d => [d.fecha, d.total]))
+  const resultado = []
+  for (let fecha = new Date(inicio); fecha <= hoy; fecha.setDate(fecha.getDate() + 1)) {
+    const clave = [fecha.getFullYear(), String(fecha.getMonth() + 1).padStart(2, '0'), String(fecha.getDate()).padStart(2, '0')].join('-')
+    resultado.push({ fecha: clave, etiqueta: fecha.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }), total: conteos.get(clave) ?? 0 })
+  }
+  return resultado
+})
+const maxAsistencias = computed(() => Math.max(1, ...diasGrafica.value.map(d => d.total)))
+async function cargarGrafica() {
+  try { asistenciasDiarias.value = await obtenerAsistenciasDiarias(periodoGrafica.value); errorGrafica.value = '' }
+  catch (e) { errorGrafica.value = String(e) }
+}
+let desuscribirGrafica
+onMounted(async () => {
+  await cargarGrafica()
+  try { desuscribirGrafica = await listen('logym://datos-actualizados', cargarGrafica) }
+  catch (e) { console.error('No se pudo escuchar actualización de asistencias', e) }
+})
+onBeforeUnmount(() => desuscribirGrafica?.())
+
 
 function formatearFecha(valor) {
   if (!valor) return 'Sin fecha'
@@ -45,7 +75,7 @@ function etiquetaEstado(estado) {
 
 <template>
   <AppShell>
-    <div class="dashboard-head">
+    <div class="dashboard-head relative isolate overflow-hidden rounded-2xl py-5">\n      <img :src="espartano" alt="" aria-hidden="true" class="pointer-events-none absolute right-4 top-1/2 -z-10 h-44 w-44 -translate-y-1/2 object-contain opacity-[0.07] brightness-0 invert sm:h-56 sm:w-56" />
       <div>
         <p class="eyebrow">CENTRO DE CONTROL / 01</p>
         <h1 class="page-title">Tu gimnasio,<br><span class="accent-text">en movimiento.</span></h1>
@@ -57,20 +87,20 @@ function etiquetaEstado(estado) {
       </div>
     </div>
     <section aria-label="Resumen operativo" class="mt-6 mb-5 grid grid-cols-1 gap-5 border-y border-white/10 py-6 sm:grid-cols-3 sm:divide-x sm:divide-white/10">
-      <div class="px-2 sm:pr-5">
+      <div class="flex items-start gap-4 px-2 sm:pr-5">\n        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 11a3 3 0 0 0 0-6M17 15a5 5 0 0 1 4 5"/></svg>\n        <div>
         <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Asistencias hoy</p>
         <strong class="mt-2 block text-4xl font-black tracking-tight text-white">{{ asistenciasHoy }}</strong>
-        <span class="mt-1 block text-xs text-zinc-500">Entradas registradas hoy</span>
+        <span class="mt-1 block text-xs text-zinc-500">Entradas registradas hoy</span></div>
       </div>
-      <div class="px-2 sm:px-6">
+      <div class="flex items-start gap-4 px-2 sm:px-6">\n        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h3M14 14h3"/></svg>\n        <div>
         <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Asistencias últimos 7 días</p>
         <strong class="mt-2 block text-4xl font-black tracking-tight text-white">{{ resumenAsistencias.ultimos7Dias }}</strong>
-        <span class="mt-1 block text-xs text-zinc-500">Periodo móvil de siete días</span>
+        <span class="mt-1 block text-xs text-zinc-500">Periodo móvil de siete días</span></div>
       </div>
-      <div class="px-2 sm:pl-6">
+      <div class="flex items-start gap-4 px-2 sm:pl-6">\n        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5"/></svg>\n        <div>
         <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Miembros activos</p>
         <strong class="mt-2 block text-4xl font-black tracking-tight text-[#ee2046]">{{ miembrosActivos }}</strong>
-        <span class="mt-1 block text-xs text-zinc-500">Sin mostrar información financiera</span>
+        <span class="mt-1 block text-xs text-zinc-500">Clientes habilitados</span></div>
       </div>
     </section>
     <section class="surface page-section mt-[18px]">
