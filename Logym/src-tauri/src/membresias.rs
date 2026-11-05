@@ -206,6 +206,17 @@ pub struct AsistenciaDiaria {
     pub total: i64,
 }
 
+/// Conteo de entradas por hora del día local actual (00:00–23:59).
+/// Se agregan asistencias, sin exponer datos personales.
+pub fn asistencias_por_hora_hoy(conn: &Connection) -> Result<Vec<AsistenciaDiaria>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT strftime('%H', fecha_hora), COUNT(*) FROM asistencias WHERE date(fecha_hora) = date('now','localtime') GROUP BY strftime('%H', fecha_hora) ORDER BY 1"
+    ).map_err(|e|e.to_string())?;
+    let filas = stmt.query_map([], |r| Ok(AsistenciaDiaria { fecha: r.get(0)?, total: r.get(1)? }))
+        .map_err(|e|e.to_string())?;
+    filas.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())
+}
+
 /// Resumen diario agregado, sin identificar a ningún cliente.
 pub fn asistencias_diarias(conn: &Connection, periodo: &str) -> Result<Vec<AsistenciaDiaria>, String> {
     let (inicio, agrupacion) = match periodo {
