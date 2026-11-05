@@ -24,30 +24,37 @@ const errorFinanzas = ref('')
 const cargandoFinanzas = ref(false)
 const formatoFecha = valor => valor ? new Date(valor + 'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'}) : ''
 const periodoMostrado = computed(() => resumenFinanzas.value ? `Del ${formatoFecha(resumenFinanzas.value.fecha_inicio)} al ${formatoFecha(resumenFinanzas.value.fecha_fin)} (ambos incluidos)` : '')
-// Distribuir los cobros en hasta siete bloques cronológicos, incluyendo intervalos sin pagos.
+// Los reportes anuales se agrupan por meses calendario, nunca por cortes arbitrarios.
 const barrasFinanzas = computed(() => {
   const reporte = resumenFinanzas.value
   if (!reporte) return []
   const inicio = new Date(reporte.fecha_inicio + 'T12:00:00')
   const fin = new Date(reporte.fecha_fin + 'T12:00:00')
   const dias = Math.round((fin - inicio) / 86400000) + 1
-  const cantidad = Math.min(7, dias)
-  if (!cantidad || dias < 1) return []
-  const pagos = new Map(reporte.serie.map(p => [p.fecha, p.total_centavos]))
-  return Array.from({length:cantidad}, (_,i) => {
-    const desde = Math.floor(i * dias / cantidad)
-    const hasta = Math.floor((i+1) * dias / cantidad) - 1
-    let total = 0
-    for (let j=desde; j<=hasta; j++) {
-      const fecha = new Date(inicio)
-      fecha.setDate(inicio.getDate()+j)
-      total += pagos.get(fechaLocal(fecha)) || 0
+  if (dias < 1) return []
+  const pagos = new Map(reporte.serie.map(p => [p.fecha, Number(p.total_centavos)]))
+  if (periodoFinanzas.value === 'anual' || dias > 62) {
+    const meses = []
+    let cursor = new Date(inicio.getFullYear(), inicio.getMonth(), 1, 12)
+    while (cursor <= fin) {
+      const anio = cursor.getFullYear(), mes = cursor.getMonth()
+      const total = reporte.serie.reduce((suma, p) => {
+        const [y,m] = p.fecha.split('-').map(Number)
+        return suma + (y === anio && m === mes+1 ? Number(p.total_centavos) : 0)
+      }, 0)
+      meses.push({ id: anio+'-'+mes, total, etiqueta: cursor.toLocaleDateString('es-MX',{month:'short',year:'numeric'}) })
+      cursor = new Date(anio,mes+1,1,12)
     }
-    const primera = new Date(inicio); primera.setDate(inicio.getDate()+desde)
-    const ultima = new Date(inicio); ultima.setDate(inicio.getDate()+hasta)
-    return { id:i, total, etiqueta: desde===hasta ? primera.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) : primera.toLocaleDateString('es-MX',{day:'2-digit',month:'short'})+' – '+ultima.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) }
+    return meses
+  }
+  return Array.from({length:dias},(_,i) => {
+    const fecha = new Date(inicio)
+    fecha.setDate(inicio.getDate()+i)
+    const clave = fechaLocal(fecha)
+    return { id:clave, total:pagos.get(clave)||0, etiqueta:fecha.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) }
   })
 })
+const unidadFinanzas = computed(() => periodoFinanzas.value === 'anual' || (resumenFinanzas.value && (new Date(resumenFinanzas.value.fecha_fin+'T12:00:00') - new Date(resumenFinanzas.value.fecha_inicio+'T12:00:00')) / 86400000 > 61) ? 'meses' : 'días')
 const maxBarraFinanzas = computed(() => Math.max(1,...barrasFinanzas.value.map(p => p.total)))
 const promedioFinanzas = computed(() => resumenFinanzas.value?.numero_pagos ? Math.round(resumenFinanzas.value.total_centavos / resumenFinanzas.value.numero_pagos) : 0)
 const mejorBloqueFinanzas = computed(() => [...barrasFinanzas.value].sort((a,b)=>b.total-a.total)[0])
@@ -216,11 +223,11 @@ onMounted(consultarEstadoAdmin)
         <section v-if="resumenFinanzas" class="rounded-2xl border border-white/10 bg-[#15171d] p-5 sm:p-6">
           <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div><p class="text-xs font-bold uppercase tracking-widest text-[#ff6b85]">Análisis del periodo</p><h3 class="mt-1 text-lg font-bold text-white">¿Cuándo ingresó más dinero?</h3></div>
-            <span class="text-xs text-zinc-400">Ingresos agrupados en {{ barrasFinanzas.length }} intervalos</span>
+            <span class="text-xs text-zinc-400">Ingresos por {{ unidadFinanzas }} · {{ barrasFinanzas.length }} {{ unidadFinanzas }}</span>
           </div>
           <div class="mb-6 grid gap-3 sm:grid-cols-2">
             <div class="rounded-xl bg-black/25 p-4"><p class="text-xs text-zinc-400">Promedio por cobro</p><strong class="mt-1 block text-xl font-bold text-white">{{ moneda(promedioFinanzas) }}</strong></div>
-            <div class="rounded-xl bg-black/25 p-4"><p class="text-xs text-zinc-400">Intervalo con mayores ingresos</p><strong class="mt-1 block text-lg font-bold text-white">{{ mejorBloqueFinanzas?.total ? mejorBloqueFinanzas.etiqueta : 'Sin cobros' }}</strong><p class="mt-1 text-xs text-[#ff6b85]">{{ moneda(mejorBloqueFinanzas?.total || 0) }}</p></div>
+            <div class="rounded-xl bg-black/25 p-4"><p class="text-xs text-zinc-400">{{ unidadFinanzas === 'meses' ? 'Mes con mayores ingresos' : 'Día con mayores ingresos' }}</p><strong class="mt-1 block text-lg font-bold text-white">{{ mejorBloqueFinanzas?.total ? mejorBloqueFinanzas.etiqueta : 'Sin cobros' }}</strong><p class="mt-1 text-xs text-[#ff6b85]">{{ moneda(mejorBloqueFinanzas?.total || 0) }}</p></div>
           </div>
           <div v-if="!resumenFinanzas.numero_pagos" class="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-zinc-400">No hubo cobros durante este periodo. El total registrado es $0.</div>
           <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -229,7 +236,7 @@ onMounted(consultarEstadoAdmin)
               <div class="h-3 overflow-hidden rounded-full bg-white/10"><div class="h-full rounded-full bg-gradient-to-r from-[#ee2046] to-[#ff728b] transition-all" :style="{width:(barra.total/maxBarraFinanzas*100)+'%'}"></div></div>
             </div>
           </div>
-          <p class="mt-4 text-xs leading-relaxed text-zinc-500">Los importes se agrupan por fechas dentro del periodo seleccionado. Los intervalos sin cobros aparecen en cero; no se inventan ingresos.</p>
+          <p class="mt-4 text-xs leading-relaxed text-zinc-500">El año se divide por meses calendario; los periodos cortos, por día. Los periodos sin cobros aparecen en cero.</p>
         </section>
       </section>
       <div v-if="pestaña === 'planes'" class="grid gap-5 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.5fr)]">
