@@ -1,19 +1,6 @@
 <script setup>
-import { ref, onBeforeUnmount } from 'vue'
 import { useToasts } from '../services/toast'
-const { avisos, cerrarToast } = useToasts()
-const pausados = new Map()
-const ahora = () => Date.now()
-const restante = ref({})
-function pausar(aviso) {
-  if (pausados.has(aviso.id)) return
-  const tiempo = restante.value[aviso.id] ?? aviso.duracion
-  pausados.set(aviso.id, { inicio: ahora(), restante: tiempo })
-}
-function reanudar(aviso) {
-  pausados.delete(aviso.id)
-}
-onBeforeUnmount(() => pausados.clear())
+const { avisos, cerrarToast, pausarToast, reanudarToast } = useToasts()
 const temas = {
   exito: { fondo: 'from-[#0bbf68] via-[#049451] to-[#006b3c]', borde: 'border-emerald-400', icono: '✓', insignia: 'bg-[#006d40]' },
   aviso: { fondo: 'from-[#ff9e19] via-[#ef7909] to-[#c65b05]', borde: 'border-orange-300', icono: '!', insignia: 'bg-[#b94c07]' },
@@ -28,8 +15,8 @@ const temas = {
       <article v-for="aviso in avisos" :key="aviso.id"
         class="toast-card pointer-events-auto relative isolate mt-3 min-h-[116px] overflow-visible rounded-[24px] border bg-gradient-to-br px-5 pb-5 pl-[105px] pt-5 text-white shadow-[0_16px_38px_rgba(0,0,0,.45)] sm:pl-[116px]"
         :class="[temas[aviso.tipo]?.fondo || temas.info.fondo, temas[aviso.tipo]?.borde || temas.info.borde]"
-        role="status" aria-live="polite" @mouseenter="pausar(aviso)" @mouseleave="reanudar(aviso)"
-        @focusin="pausar(aviso)" @focusout="reanudar(aviso)">
+        role="status" aria-live="polite" @mouseenter="pausarToast(aviso.id)" @mouseleave="reanudarToast(aviso.id)"
+        @focusin="pausarToast(aviso.id)" @focusout="reanudarToast(aviso.id)">
         <div class="pointer-events-none absolute inset-0 overflow-hidden rounded-[23px]" aria-hidden="true">
           <svg class="absolute bottom-[-9px] left-[-4px] h-[105px] w-[110px] opacity-35" viewBox="0 0 120 120" fill="currentColor">
             <path d="M60 112C27 94 14 68 21 30c-5 33 9 59 39 82Zm-7-16C34 91 23 78 20 63c17 2 29 13 33 33ZM37 74C20 69 12 58 11 43c16 4 25 15 26 31Zm-7-27C18 38 17 26 21 16c12 9 16 19 9 31Zm35 65c33-18 46-44 39-82 5 33-9 59-39 82Zm7-16c19-5 30-18 33-33-17 2-29 13-33 33Zm16-22c17-5 25-16 26-31-16 4-25 15-26 31Zm7-27c12-9 13-21 9-31-12 9-16 19-9 31Z"/>
