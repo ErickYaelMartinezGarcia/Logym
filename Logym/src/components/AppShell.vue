@@ -42,7 +42,9 @@ function cerrarMenu() {
           v-for="enlace in enlaces"
           :key="enlace.to"
           :to="enlace.to"
-          class="drawer-link !border-0 !border-l-[3px] !border-l-transparent !rounded-xl !transition-none hover:!bg-[#ee2046]/15 hover:!text-white hover:!border-l-[#ee2046] focus-visible:!bg-[#ee2046]/15 focus-visible:!outline-none focus-visible:!ring-2 focus-visible:!ring-[#ee2046]"
+          class="drawer-link !border-0 !border-l-[3px] !border-l-transparent !rounded-xl !transition-none
+           hover:!bg-[#ee2046]/15 hover:!text-white hover:!border-l-[#ee2046] focus-visible:!bg-[#ee2046]/15 
+           focus-visible:!outline-none focus-visible:!ring-2 focus-visible:!ring-[#ee2046]"
           :class="{ 'drawer-link--active': route.path === enlace.to }"
           @click="cerrarMenu"
         >
