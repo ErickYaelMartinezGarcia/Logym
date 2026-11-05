@@ -102,7 +102,7 @@ onMounted(cargar)
             <tr v-for="c in clientesFiltrados" :key="c.id">
               <td><strong>{{ c.nombre }}</strong><div class="muted">ID #{{ c.id }}</div></td>
               <td>{{ c.telefono || '—' }}</td>
-              <td>{{ c.fecha_fin_membresia || 'Sin fecha' }}</td>
+              <td><span class="inline-flex rounded-md bg-[#ee2046]/10 px-2 py-1 text-xs font-semibold text-[#ff6b85]">{{ c.tipo_membresia }}</span><div class="mt-1 text-xs text-zinc-400">Hasta {{ c.fecha_fin_membresia || 'sin fecha' }}</div></td>
               <td>{{ c.activo ? 'Activo' : 'Inactivo' }}</td>
               <td><div class="actions">
                 <button class="action" @click="editar(c)">Editar</button>
@@ -117,6 +117,7 @@ onMounted(cargar)
       <div v-if="editando" class="overlay" @click.self="editando = null">
         <form class="dialog surface" @submit.prevent="guardar">
           <h2>Editar cliente #{{ editando.id }}</h2>
+          <p class="text-sm text-zinc-400">Plan actual: <strong class="text-[#ff6b85]">{{ editando.tipo_membresia }}</strong>. Para cambiarlo, utiliza la renovación de membresía.</p>
           <label>Nombre<input v-model="editando.nombre" class="control" required /></label>
           <label>Teléfono<input v-model="editando.telefono" class="control" /></label>
           <label>Teléfono de emergencia<input v-model="editando.telefono_emergencia" class="control" /></label>
