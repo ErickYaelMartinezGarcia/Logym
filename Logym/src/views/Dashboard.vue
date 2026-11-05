@@ -276,14 +276,7 @@ function etiquetaEstado(estado) {
           </table>
         </div>
       </section>
-      <section class="surface dashboard-panel">
-        <p class="eyebrow">RITMO SEMANAL</p>
-        <h2 class="dashboard-panel__heading-title">Asistencias</h2>
-        <p class="muted dashboard-panel__heading-meta">Los datos se calculan a partir de accesos válidos, sin duplicar
-          visitas del mismo cliente en un día.</p>
-        <div class="attendance-note"><span class="status-dot"></span><span>Una huella repetida el mismo día no genera
-            otra entrada.</span></div>
-      </section>
+
     </div>
   </AppShell>
 </template>
