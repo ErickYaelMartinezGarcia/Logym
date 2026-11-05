@@ -38,6 +38,7 @@ type FnOpenDevice = unsafe extern "system" fn(HSGFPM, DWORD) -> DWORD;
 type FnGetDeviceInfo = unsafe extern "system" fn(HSGFPM, *mut DeviceInfo) -> DWORD;
 type FnGetImageEx = unsafe extern "system" fn(HSGFPM, *mut u8, DWORD, *mut c_void, DWORD) -> DWORD;
 type FnCreateTemplate = unsafe extern "system" fn(HSGFPM, *mut c_void, *mut u8, *mut u8) -> DWORD;
+type FnCloseDevice = unsafe extern "system" fn(HSGFPM) -> DWORD;
 type FnMatchTemplate = unsafe extern "system" fn(HSGFPM, *mut u8, *mut u8, DWORD, *mut BOOL) -> DWORD;
 
 pub struct SgfpmApi {
@@ -50,6 +51,7 @@ pub struct SgfpmApi {
     pub get_image_ex: Symbol<'static, FnGetImageEx>,
     pub create_template: Symbol<'static, FnCreateTemplate>,
     pub match_template: Symbol<'static, FnMatchTemplate>,
+    pub close_device: Symbol<'static, FnCloseDevice>,
 }
 
 static FP_LIB: OnceLock<Library> = OnceLock::new();
@@ -93,6 +95,16 @@ impl SecuGenController {
     }
 
     // AHORA REGRESA Option: None = no hay dedo (era error 54)
+    pub fn reconectar(&self) -> Result<(), String> {
+        let api = get_api(&self.bin_path)?;
+        let guard = GLOBAL_MANAGER.get().ok_or("Manager no inicializado")?.lock().map_err(|e| e.to_string())?;
+        unsafe {
+            let _ = (api.close_device)(guard.0);
+            check_sdk((api.open_device)(guard.0, SG_USB_AUTO_DETECT), "SGFPM_OpenDevice")?;
+        }
+        Ok(())
+    }
+
     pub fn capturar_template(&self) -> Result<Option<String>, String> {
         let api = get_api(&self.bin_path)?;
         let guard = GLOBAL_MANAGER.get().ok_or("Manager no inicializado")?.lock().map_err(|e| e.to_string())?;
@@ -174,6 +186,7 @@ fn get_api(bin_path: &Path) -> Result<&'static SgfpmApi, String> {
             get_image_ex: lib.get(b"SGFPM_GetImageEx\0").map_err(|e| e.to_string())?,
             create_template: lib.get(b"SGFPM_CreateTemplate\0").map_err(|e| e.to_string())?,
             match_template: lib.get(b"SGFPM_MatchTemplate\0").map_err(|e| e.to_string())?,
+            close_device: lib.get(b"SGFPM_CloseDevice\0").map_err(|e| e.to_string())?,
         }
     };
     Ok(API.get_or_init(|| api))
