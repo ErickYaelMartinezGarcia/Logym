@@ -165,13 +165,13 @@ pub struct AsistenciaDiaria {
 
 /// Resumen diario agregado, sin identificar a ningún cliente.
 pub fn asistencias_diarias(conn: &Connection, periodo: &str) -> Result<Vec<AsistenciaDiaria>, String> {
-    let inicio = match periodo {
-        "dia" => "date('now','localtime')",
-        "semana" => "date('now','localtime','-6 days')",
-        "mes" => "date('now','localtime','start of month')",
+    let (inicio, agrupacion) = match periodo {
+        "dia" => ("date(\'now\',\'localtime\')", "date(fecha_hora)"),
+        "semana" => ("date(\'now\',\'localtime\',\'-6 days\')", "date(fecha_hora)"),
+        "mes" => ("date(\'now\',\'localtime\',\'start of year\')", "strftime(\'%Y-%m\',fecha_hora)"),
         _ => return Err("Periodo inválido".into()),
     };
-    let consulta = format!("SELECT date(fecha_hora), COUNT(*) FROM asistencias WHERE date(fecha_hora) BETWEEN {inicio} AND date('now','localtime') GROUP BY date(fecha_hora) ORDER BY date(fecha_hora)");
+    let consulta = format!("SELECT {agrupacion}, COUNT(*) FROM asistencias WHERE date(fecha_hora) BETWEEN {inicio} AND date(\'now\',\'localtime\') GROUP BY {agrupacion} ORDER BY {agrupacion}");
     let mut sentencia = conn.prepare(&consulta).map_err(|e| e.to_string())?;
     let filas = sentencia.query_map([], |fila| Ok(AsistenciaDiaria { fecha: fila.get(0)?, total: fila.get(1)? })).map_err(|e| e.to_string())?;
     let mut datos = Vec::new();
