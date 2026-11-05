@@ -39,7 +39,7 @@ pub fn listar_clientes(conexion: &Connection) -> Result<Vec<ClienteTabla>, Strin
 /// Lista clientes activos e inactivos para su administración.
 pub fn listar_clientes_membresia(conexion: &Connection) -> Result<Vec<ClienteMembresia>, String> {
     let mut stmt = conexion.prepare(
-        "SELECT id, nombre, COALESCE(telefono,''), COALESCE(fecha_fin_membresia,''), CAST(julianday(date(fecha_fin_membresia)) - julianday(date('now','localtime')) AS INTEGER), activo, COALESCE(telefono_emergencia,''), COALESCE(fecha_registro,''), COALESCE(fecha_inicio_membresia,'') FROM clientes ORDER BY nombre"
+        "SELECT id, nombre, COALESCE(telefono,''), COALESCE(fecha_fin_membresia,''), CAST(julianday(date(fecha_fin_membresia)) - julianday(date('now','localtime')) AS INTEGER), activo, COALESCE(telefono_emergencia,''), COALESCE(fecha_registro,''), COALESCE(fecha_inicio_membresia,''), COALESCE((SELECT p.concepto_membresia FROM pagos p WHERE p.cliente_id = clientes.id ORDER BY p.id DESC LIMIT 1), 'Sin plan registrado') FROM clientes ORDER BY nombre"
     ).map_err(|e| e.to_string())?;
     let rows = stmt.query_map([], |r| {
         let dias: Option<i64> = r.get(4)?;
@@ -57,7 +57,7 @@ pub fn listar_clientes_membresia(conexion: &Connection) -> Result<Vec<ClienteMem
             fecha_fin_membresia: r.get(3)?, dias_restantes: dias.unwrap_or(0),
             estado_membresia: estado, activo: r.get::<_, i64>(5)? != 0,
             telefono_emergencia: r.get(6)?, fecha_registro: r.get(7)?,
-            fecha_inicio_membresia: r.get(8)?
+            fecha_inicio_membresia: r.get(8)?, tipo_membresia: r.get(9)?
         })
     }).map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
