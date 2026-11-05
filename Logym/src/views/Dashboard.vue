@@ -3,17 +3,7 @@ import AppShell from '../components/AppShell.vue'
 import espartano from '../assets/espartano_laurel.svg'
 import { ref, computed, onMounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
-import { resumenIngresos, obtenerAsistenciasPeriodo, obtenerAsistenciasDiarias } from '../services/tauriApi'
-const periodoIngresos = ref('mes')
-const ingresos = ref(null)
-const asistenciasPeriodo = ref(null)
-const errorIngresos = ref('')
-async function cargarIngresos() {
-  try { [ingresos.value, asistenciasPeriodo.value] = await Promise.all([resumenIngresos(periodoIngresos.value), obtenerAsistenciasPeriodo(periodoIngresos.value)]); errorIngresos.value = '' }
-  catch (e) { errorIngresos.value = String(e) }
-}
-let unsubscribeIngresos
-onMounted(async () => { await cargarIngresos(); try { unsubscribeIngresos = await listen('logym://datos-actualizados', cargarIngresos) } catch(e) { console.error(e) } })
+import { obtenerAsistenciasDiarias } from '../services/tauriApi'
 import { onBeforeUnmount } from 'vue'
 onBeforeUnmount(() => unsubscribeIngresos?.())
 import { useDashboard } from '../composables/useDashboard'
@@ -160,7 +150,7 @@ function etiquetaEstado(estado) {
               <td class="muted">{{ cliente.estado_membresia === 'sin_fecha' ? '-' : cliente.dias_restantes }}</td>
             </tr>
             <tr v-if="!busqueda.trim()">
-              <td colspan="7" class="muted empty-state">Escribe un nombre, teléfono o ID para consultar un cliente.</td>
+              <td colspan="6" class="muted empty-state">Escribe un nombre, teléfono o ID para consultar un cliente.</td>
             </tr>
             <tr v-else-if="!clientesFiltrados.length">
               <td colspan="6" class="muted empty-state">No se encontraron clientes con ese criterio.</td>
@@ -168,30 +158,6 @@ function etiquetaEstado(estado) {
           </tbody>
         </table>
       </div>
-    </section>
-
-    <section class="surface page-section">
-      <div class="section-heading">
-        <div><p class="eyebrow">INGRESOS REALES</p><h2 class="section-title">Cobros registrados</h2></div>
-        <select v-model="periodoIngresos" @change="cargarIngresos" class="search-input" aria-label="Periodo de ingresos">
-          <option value="dia">Hoy</option><option value="semana">Últimos 7 días</option><option value="mes">Mes actual</option>
-        </select>
-      </div>
-      <p v-if="errorIngresos" class="muted">{{ errorIngresos }}</p>
-      <div v-if="ingresos" class="attendance-summary">
-        <article class="attendance-item"><span class="muted">Total cobrado</span><strong>{{ (ingresos.total_centavos/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'}) }}</strong></article>
-        <article class="attendance-item"><span class="muted">Membresías</span><strong>{{ (ingresos.membresias_centavos/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'}) }}</strong></article>
-        <article class="attendance-item"><span class="muted">Inscripciones</span><strong>{{ (ingresos.inscripciones_centavos/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'}) }}</strong></article>
-        <article class="attendance-item"><span class="muted">Asistencias del periodo</span><strong>{{ asistenciasPeriodo ?? 0 }}</strong></article>
-      </div>
-    </section>
-    <section class="metrics-grid">
-      <article v-for="item in metricas" :key="item.titulo" class="surface metric-card">
-        <div class="metric-card__top"><span>{{ item.icon }}</span><span class="muted metric-card__trend">{{ item.trend
-            }}</span></div>
-        <p class="muted metric-card__label">{{ item.titulo }}</p><strong class="metric-card__value">{{ item.valor
-          }}</strong>
-      </article>
     </section>
 
     <section class="surface page-section">
@@ -211,7 +177,7 @@ function etiquetaEstado(estado) {
       <p v-if="errorGrafica" role="alert" class="mt-3 text-xs text-red-300">{{ errorGrafica }}</p>
       <div class="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-4">
         <div class="min-w-0 lg:col-span-3">
-          <svg class="h-44 w-full" viewBox="0 0 100 100" preserveAspectRatio="none" role="img"
+          <svg class="h-64 w-full sm:h-72" viewBox="0 0 100 100" preserveAspectRatio="none" role="img"
             :aria-label="'Tendencia de asistencias: ' + diasGrafica.map(d => d.etiqueta + ' ' + d.total).join(', ')">
             <defs><linearGradient id="virtus-asistencias" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ee2046" stop-opacity=".35"/><stop offset="100%" stop-color="#ee2046" stop-opacity="0"/></linearGradient></defs>
             <path v-for="y in [14, 40, 66, 92]" :key="y" :d="'M 0 ' + y + ' H 100'" stroke="#ffffff" stroke-opacity=".09" stroke-width=".3" stroke-dasharray="1 1"/>
