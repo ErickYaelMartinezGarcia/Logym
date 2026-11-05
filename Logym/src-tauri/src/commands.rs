@@ -130,3 +130,9 @@ pub fn listar_planes_admin(app: AppHandle, password: String) -> Result<Vec<crate
  licencia::verificar(&app)?;
  crate::membresias::listar_admin(&crate::database::abrir_db(&app)?,&password)
 }
+
+#[tauri::command]
+pub fn obtener_asistencias_diarias(app: AppHandle, periodo: String) -> Result<Vec<crate::membresias::AsistenciaDiaria>, String> {
+    licencia::verificar(&app)?;
+    crate::membresias::asistencias_diarias(&crate::database::abrir_db(&app)?, &periodo)
+}
