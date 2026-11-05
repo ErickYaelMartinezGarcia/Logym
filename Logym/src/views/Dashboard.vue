@@ -38,11 +38,11 @@ const diasGrafica = computed(() => {
 const maxAsistencias = computed(() => Math.max(1, ...diasGrafica.value.map(d => d.total)))
 const puntosGrafica = computed(() => diasGrafica.value.map((d, i, arr) => ({
   ...d,
-  x: arr.length === 1 ? 50 : 6 + i * 88 / (arr.length - 1),
-  y: 88 - d.total / maxAsistencias.value * 74
+  x: arr.length === 1 ? 350 : 35 + i * 630 / (arr.length - 1),
+  y: 210 - d.total / maxAsistencias.value * 180
 })))
 const lineaGrafica = computed(() => puntosGrafica.value.map(p => p.x + ',' + p.y).join(' '))
-const areaGrafica = computed(() => puntosGrafica.value.length ? '6,92 ' + lineaGrafica.value + ' 94,92' : '')
+const areaGrafica = computed(() => puntosGrafica.value.length ? `35,210 ${lineaGrafica.value} 665,210` : '')
 const topDias = computed(() => [...diasGrafica.value].sort((a, b) => b.total - a.total).slice(0, 5))
 async function cargarGrafica() {
   try { asistenciasDiarias.value = await obtenerAsistenciasDiarias(periodoGrafica.value); errorGrafica.value = '' }
@@ -176,13 +176,13 @@ function etiquetaEstado(estado) {
       <p v-if="errorGrafica" role="alert" class="mt-3 text-xs text-red-300">{{ errorGrafica }}</p>
       <div class="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-4">
         <div class="min-w-0 lg:col-span-3">
-          <svg class="h-64 w-full sm:h-72" viewBox="0 0 100 100" preserveAspectRatio="none" role="img"
+          <svg class="block h-auto w-full min-h-44 sm:min-h-56" viewBox="0 0 700 240" preserveAspectRatio="xMidYMid meet" role="img"
             :aria-label="'Tendencia de asistencias: ' + diasGrafica.map(d => d.etiqueta + ' ' + d.total).join(', ')">
             <defs><linearGradient id="virtus-asistencias" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ee2046" stop-opacity=".35"/><stop offset="100%" stop-color="#ee2046" stop-opacity="0"/></linearGradient></defs>
-            <path v-for="y in [14, 40, 66, 92]" :key="y" :d="'M 0 ' + y + ' H 100'" stroke="#ffffff" stroke-opacity=".09" stroke-width=".3" stroke-dasharray="1 1"/>
+            <path v-for="y in [30, 90, 150, 210]" :key="y" :d="'M 0 ' + y + ' H 700'" stroke="#ffffff" stroke-opacity=".09" stroke-width="1" stroke-dasharray="6 7"/>
             <polygon v-if="puntosGrafica.length > 1" :points="areaGrafica" fill="url(#virtus-asistencias)"/>
-            <polyline :points="lineaGrafica" fill="none" stroke="#ee2046" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-            <circle v-for="p in puntosGrafica" :key="p.fecha" :cx="p.x" :cy="p.y" r="1.4" fill="#ee2046" stroke="#fff" stroke-width=".45"><title>{{ p.etiqueta }}: {{ p.total }}</title></circle>
+            <polyline :points="lineaGrafica" fill="none" stroke="#ee2046" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+            <circle v-for="p in puntosGrafica" :key="p.fecha" :cx="p.x" :cy="p.y" r="4.5" fill="#ee2046" stroke="#fff" stroke-width="2"><title>{{ p.etiqueta }}: {{ p.total }}</title></circle>
           </svg>
           <div class="mt-1 flex justify-between gap-1 text-[10px] text-zinc-400">
             <span v-for="dia in diasGrafica" :key="dia.fecha" class="min-w-0 flex-1 truncate text-center" :title="dia.fecha">{{ dia.etiqueta }}</span>
