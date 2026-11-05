@@ -32,7 +32,7 @@ export const pausarLectorGlobal = (pausado) => ejecutar('pausar_lector_global', 
 
 export const listarTiposMembresia = () => ejecutar('listar_tipos_membresia')
 export const obtenerPrecioInscripcion = () => ejecutar('obtener_precio_inscripcion')
-export const resumenIngresos = (periodo) => ejecutar('resumen_ingresos', { periodo })
+export const resumenIngresos = (periodo, password) => ejecutar('resumen_ingresos', { periodo, password })
 
 export const adminConfigurado = () => ejecutar('admin_configurado')
 export const crearPasswordAdmin = (password) => ejecutar('crear_password_admin', { password })
