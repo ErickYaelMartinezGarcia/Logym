@@ -6,7 +6,7 @@ import espartano from '../assets/espartano_laurel.svg'
 const temas = {
   exito: { fondo: 'from-[#0bbf68] via-[#049451] to-[#006b3c]', icono: '✓', insignia: 'bg-[#006d40]' },
   aviso: { fondo: 'from-[#ff9e19] via-[#ef7909] to-[#c65b05]', icono: '!', insignia: 'bg-[#b94c07]' },
-  error: { fondo: 'from-[#f43b65] via-[#d91e4c] to-[#a60f38]', icono: '×', insignia: 'bg-[#8c1640]' },
+  error: { fondo: 'from-[#f43b65] via-[#d91e4c] to-[#a60f38]', icono: 'x', insignia: 'bg-[#8c1640]' },
   info: { fondo: 'from-[#258dff] via-[#0969d9] to-[#064caa]', icono: 'i', insignia: 'bg-[#0756b8]' }
 }
 </script>
@@ -24,7 +24,7 @@ const temas = {
           <svg class="absolute bottom-0 right-0 h-[65px] w-[110px] opacity-20" viewBox="0 0 110 65" fill="currentColor"><path d="M0 65C34 25 63 49 110 8V65Z"/></svg>
           <svg class="absolute bottom-0 left-[85px] h-[35px] w-[120px] opacity-15" viewBox="0 0 120 35" fill="none" stroke="currentColor"><path d="M0 35Q55-30 120 35"/></svg>
         </div>
-        <div class="absolute -left-1 -top-3 z-10 grid h-[51px] w-[51px] place-items-center rounded-full text-[28px] font-extrabold shadow-[0_7px_17px_rgba(0,0,0,.25)]"
+        <div class="absolute -left-1 -top-3 z-10 grid h-[35px] w-[35px] place-items-center rounded-full text-[28px] font-extrabold shadow-[0_7px_17px_rgba(0,0,0,.25)]"
           :class="(temas[aviso.tipo] || temas.info).insignia" aria-hidden="true">{{ (temas[aviso.tipo] || temas.info).icono }}</div>
         <div class="relative z-10 min-w-0">
           <h3 class="pr-5 text-[15px] font-bold leading-tight tracking-tight">{{ aviso.titulo }}</h3>
