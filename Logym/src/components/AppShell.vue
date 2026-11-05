@@ -42,7 +42,7 @@ function cerrarMenu() {
           v-for="enlace in enlaces"
           :key="enlace.to"
           :to="enlace.to"
-          class="drawer-link"
+          class="drawer-link !border-0 !border-l-[3px] !border-l-transparent !rounded-xl !transition-none hover:!bg-[#ee2046]/15 hover:!text-white hover:!border-l-[#ee2046] focus-visible:!bg-[#ee2046]/15 focus-visible:!outline-none focus-visible:!ring-2 focus-visible:!ring-[#ee2046]"
           :class="{ 'drawer-link--active': route.path === enlace.to }"
           @click="cerrarMenu"
         >
@@ -104,10 +104,4 @@ function cerrarMenu() {
 
 <style scoped>
 .virtus-sidebar { background: linear-gradient(155deg, #111114 0%, #0a0b0e 70%, #22090f 100%); border-right-color: #3b1a22; }
-.virtus-sidebar :deep(.drawer-link) { border: 0; border-left: 3px solid transparent; border-radius: 10px; padding: 13px 12px; }
-.virtus-sidebar :deep(.drawer-link:hover) { background: rgba(238,32,70,.09); }
-.virtus-sidebar :deep(.drawer-link--active) { background: linear-gradient(90deg, rgba(170,17,44,.55), rgba(238,32,70,.17)); border-left-color: #ee2046; box-shadow: none; }
-.virtus-sidebar :deep(.drawer-link--active .drawer-icon) { color: #fff; }
-.virtus-sidebar :deep(.drawer-icon) { color: #f04461; }
-.virtus-sidebar :deep(.drawer-link strong) { font-weight: 650; }
 </style>
