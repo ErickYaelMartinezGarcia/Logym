@@ -5,7 +5,6 @@ import { ref, computed, onMounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { obtenerAsistenciasDiarias } from '../services/tauriApi'
 import { onBeforeUnmount } from 'vue'
-onBeforeUnmount(() => unsubscribeIngresos?.())
 import { useDashboard } from '../composables/useDashboard'
 
 const {
