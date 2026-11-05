@@ -20,6 +20,48 @@ pub struct ResumenIngresos {
     pub numero_pagos: i64,
 }
 
+/// Punto de la serie financiera; los importes provienen de pagos históricos.
+#[derive(Serialize)]
+pub struct IngresoDiario {
+    pub fecha: String,
+    pub total_centavos: i64,
+}
+
+/// Resumen y evolución para un rango inclusivo de fechas locales.
+#[derive(Serialize)]
+pub struct ReporteFinanciero {
+    pub fecha_inicio: String,
+    pub fecha_fin: String,
+    pub total_centavos: i64,
+    pub membresias_centavos: i64,
+    pub inscripciones_centavos: i64,
+    pub numero_pagos: i64,
+    pub serie: Vec<IngresoDiario>,
+}
+
+pub fn ingresos_rango(conn: &Connection, inicio: &str, fin: &str) -> Result<ReporteFinanciero, String> {
+    // No interpolar fechas en SQL: validar calendario y enlazar parámetros.
+    fn fecha_valida(s: &str) -> bool {
+        if s.len() != 10 || !s.is_ascii() || !s.as_bytes().iter().enumerate().all(|(i,b)| if i == 4 || i == 7 { *b == b'-' } else { b.is_ascii_digit() }) { return false; }
+        let (Ok(y), Ok(m), Ok(d)) = (s[0..4].parse::<i32>(), s[5..7].parse::<u32>(), s[8..10].parse::<u32>()) else { return false };
+        let dias = match m { 1|3|5|7|8|10|12 => 31, 4|6|9|11 => 30, 2 if y % 400 == 0 || (y % 4 == 0 && y % 100 != 0) => 29, 2 => 28, _ => return false };
+        (1900..=9999).contains(&y) && d >= 1 && d <= dias
+    }
+    if !fecha_valida(inicio) || !fecha_valida(fin) || inicio > fin {
+        return Err("Selecciona un rango de fechas válido (inicio no posterior al fin)".into());
+    }
+    let (total, membresias, inscripciones, pagos): (i64,i64,i64,i64) = conn.query_row(
+        "SELECT COALESCE(SUM(total_centavos),0), COALESCE(SUM(membresia_centavos),0), COALESCE(SUM(inscripcion_centavos),0), COUNT(*) FROM pagos WHERE date(fecha_pago) BETWEEN ?1 AND ?2",
+        params![inicio, fin], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))
+    ).map_err(|e|e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT date(fecha_pago), SUM(total_centavos) FROM pagos WHERE date(fecha_pago) BETWEEN ?1 AND ?2 GROUP BY date(fecha_pago) ORDER BY date(fecha_pago)"
+    ).map_err(|e|e.to_string())?;
+    let serie = stmt.query_map(params![inicio,fin], |r| Ok(IngresoDiario { fecha:r.get(0)?, total_centavos:r.get(1)? }))
+        .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+    Ok(ReporteFinanciero { fecha_inicio:inicio.into(), fecha_fin:fin.into(), total_centavos:total, membresias_centavos:membresias, inscripciones_centavos:inscripciones, numero_pagos:pagos, serie })
+}
+
 pub fn listar(conn: &Connection) -> Result<Vec<TipoMembresia>, String> {
     let mut stmt = conn.prepare("SELECT id,nombre,duracion_meses,precio_centavos,activo,solo_alta FROM tipos_membresia WHERE activo=1 ORDER BY nombre")
         .map_err(|e| e.to_string())?;
