@@ -243,7 +243,7 @@ function etiquetaEstado(estado) {
       </div>
     </section>
 
-    <div class="dashboard-columns">
+    <div class="mt-6">
       <section class="surface dashboard-panel">
         <div class="dashboard-panel__heading">
           <div>
