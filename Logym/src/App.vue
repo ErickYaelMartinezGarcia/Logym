@@ -5,6 +5,8 @@ import { listen } from '@tauri-apps/api/event'
 import ToastNotifications from './components/ToastNotifications.vue'
 import { mostrarToast } from './services/toast'
 let desuscribir = null
+let desuscribirLector = null
+let ultimoAvisoLector = 0
 
 // La respuesta de Rust conserva la causa exacta del rechazo; no ocultar errores.
 function presentarResultado(resultado) {
@@ -19,6 +21,12 @@ function presentarResultado(resultado) {
 }
 
 onMounted(async () => {
+  desuscribirLector = await listen('logym://lector-aviso', ({ payload }) => {
+    if (Date.now() - ultimoAvisoLector < 5000) return
+    ultimoAvisoLector = Date.now()
+    if (payload === 'no_registrado') mostrarToast({ titulo: 'Cliente no registrado', detalle: 'No encontramos una huella registrada que coincida.', tipo: 'aviso' })
+    if (payload === 'lectura_invalida') mostrarToast({ titulo: 'Lectura no realizada correctamente', detalle: 'Coloca el dedo completo sobre el sensor e intenta nuevamente.', tipo: 'error' })
+  })
   desuscribir = await listen('logym://checkin', ({ payload }) => {
     const { cliente, resultado } = payload || {}
     if (!cliente) return
@@ -27,6 +35,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   desuscribir?.()
+  desuscribirLector?.()
 })
 </script>
 
