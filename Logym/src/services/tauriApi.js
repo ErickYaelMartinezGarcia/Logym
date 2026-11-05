@@ -44,4 +44,5 @@ export const obtenerAsistenciasPeriodo = (periodo) => ejecutar('obtener_asistenc
 
 export const listarPlanesAdmin = (password) => ejecutar('listar_planes_admin', { password })
 
+export const obtenerAsistenciasPorHora = () => ejecutar('obtener_asistencias_por_hora')
 export const obtenerAsistenciasDiarias = (periodo) => ejecutar('obtener_asistencias_diarias', { periodo })
