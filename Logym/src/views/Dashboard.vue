@@ -87,17 +87,20 @@ function etiquetaEstado(estado) {
       </div>
     </div>
     <section aria-label="Resumen operativo" class="mt-6 mb-5 grid grid-cols-1 gap-5 border-y border-white/10 py-6 sm:grid-cols-3 sm:divide-x sm:divide-white/10">
-      <div class="flex items-start gap-4 px-2 sm:pr-5">\n        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 11a3 3 0 0 0 0-6M17 15a5 5 0 0 1 4 5"/></svg>\n        <div>
+      <div class="flex items-start gap-4 px-2 sm:pr-5">
+        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 11a3 3 0 0 0 0-6M17 15a5 5 0 0 1 4 5"/></svg>\n        <div>
         <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Asistencias hoy</p>
         <strong class="mt-2 block text-4xl font-black tracking-tight text-white">{{ asistenciasHoy }}</strong>
         <span class="mt-1 block text-xs text-zinc-500">Entradas registradas hoy</span></div>
       </div>
-      <div class="flex items-start gap-4 px-2 sm:px-6">\n        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h3M14 14h3"/></svg>\n        <div>
+      <div class="flex items-start gap-4 px-2 sm:px-6">
+        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h3M14 14h3"/></svg>\n        <div>
         <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Asistencias últimos 7 días</p>
         <strong class="mt-2 block text-4xl font-black tracking-tight text-white">{{ resumenAsistencias.ultimos7Dias }}</strong>
         <span class="mt-1 block text-xs text-zinc-500">Periodo móvil de siete días</span></div>
       </div>
-      <div class="flex items-start gap-4 px-2 sm:pl-6">\n        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5"/></svg>\n        <div>
+      <div class="flex items-start gap-4 px-2 sm:pl-6">
+        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5"/></svg>\n        <div>
         <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Miembros activos</p>
         <strong class="mt-2 block text-4xl font-black tracking-tight text-[#ee2046]">{{ miembrosActivos }}</strong>
         <span class="mt-1 block text-xs text-zinc-500">Clientes habilitados</span></div>
@@ -176,23 +179,33 @@ function etiquetaEstado(estado) {
       <div class="section-heading">
         <div>
           <p class="eyebrow">ASISTENCIAS</p>
-          <h2 class="section-title">Ritmo real del gimnasio</h2>
+          <h2 class="section-title">Asistencias por periodo</h2>
+          <p class="muted mt-2 text-xs">Totales por día, sin historial individual.</p>
         </div>
-        <span class="muted dashboard-panel__heading-meta">Ventana móvil de 7 días</span>
+        <div class="flex gap-1 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="Periodo de asistencias">
+          <button v-for="opcion in [{ id: 'dia', nombre: 'Día' }, { id: 'semana', nombre: 'Semana' }, { id: 'mes', nombre: 'Mes' }]"
+            :key="opcion.id" type="button" @click="periodoGrafica = opcion.id; cargarGrafica()"
+            :aria-pressed="periodoGrafica === opcion.id"
+            class="rounded-lg px-4 py-2 text-sm font-semibold transition-colors"
+            :class="periodoGrafica === opcion.id ? 'bg-[#ee2046] text-white' : 'text-zinc-400 hover:text-white'">{{ opcion.nombre }}</button>
+        </div>
       </div>
-      <div class="attendance-summary">
-        <article class="attendance-item">
-          <span class="muted">Entradas últimos 7 días</span>
-          <strong>{{ resumenAsistencias.ultimos7Dias }}</strong>
-        </article>
-        <article class="attendance-item">
-          <span class="muted">Día más concurrido</span>
-          <strong>{{ resumenAsistencias.diaMasConcurrido }}</strong>
-        </article>
-        <article class="attendance-item">
-          <span class="muted">Hora de mayor afluencia</span>
-          <strong>{{ resumenAsistencias.horaMayorAfluencia }}</strong>
-        </article>
+      <p v-if="errorGrafica" role="alert" class="mt-4 text-sm text-red-300">{{ errorGrafica }}</p>
+      <div class="mt-7 flex h-56 items-end gap-1.5 border-b border-white/10 pb-1 sm:gap-3" role="img" :aria-label="'Gráfica de asistencias: ' + diasGrafica.map(d => d.etiqueta + ': ' + d.total).join(', ')">
+        <div v-for="dia in diasGrafica" :key="dia.fecha" class="group relative flex h-full min-w-0 flex-1 flex-col justify-end">
+          <span class="mb-1 text-center text-[10px] font-semibold text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100">{{ dia.total }}</span>
+          <div class="w-full rounded-t-md bg-gradient-to-t from-[#831027] to-[#ee2046] transition-all duration-300 group-hover:from-[#b51737] group-hover:to-[#ff4769]"
+            :style="{ height: Math.max(2, (dia.total / maxAsistencias) * 90) + '%' }"
+            :title="dia.etiqueta + ': ' + dia.total + ' asistencias'"></div>
+        </div>
+      </div>
+      <div class="mt-2 flex gap-1.5 sm:gap-3">
+        <span v-for="dia in diasGrafica" :key="dia.fecha" class="min-w-0 flex-1 truncate text-center text-[10px] text-zinc-500" :title="dia.fecha">{{ periodoGrafica === 'mes' ? dia.fecha.slice(-2) : dia.etiqueta }}</span>
+      </div>
+      <div class="mt-6 flex flex-wrap gap-6 border-t border-white/10 pt-5 text-sm">
+        <div><span class="muted">Entradas últimos 7 días</span><strong class="ml-3 text-white">{{ resumenAsistencias.ultimos7Dias }}</strong></div>
+        <div><span class="muted">Día más concurrido</span><strong class="ml-3 text-white">{{ resumenAsistencias.diaMasConcurrido }}</strong></div>
+        <div><span class="muted">Hora de mayor afluencia</span><strong class="ml-3 text-white">{{ resumenAsistencias.horaMayorAfluencia }}</strong></div>
       </div>
     </section>
 
