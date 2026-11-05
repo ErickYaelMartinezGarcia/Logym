@@ -24,21 +24,37 @@ const errorFinanzas = ref('')
 const cargandoFinanzas = ref(false)
 const formatoFecha = valor => valor ? new Date(valor + 'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'}) : ''
 const periodoMostrado = computed(() => resumenFinanzas.value ? `Del ${formatoFecha(resumenFinanzas.value.fecha_inicio)} al ${formatoFecha(resumenFinanzas.value.fecha_fin)} (ambos incluidos)` : '')
-const puntosFinanzas = computed(() => {
-  const serie = resumenFinanzas.value?.serie || []
-  if (!serie.length) return []
-  const max = Math.max(1,...serie.map(p => p.total_centavos))
-  return serie.map((p,i) => ({
-    ...p, x:serie.length===1 ? 350 : 35 + i*630/(serie.length-1),
-    y:210 - p.total_centavos/max*175
-  }))
+// Distribuir los cobros en hasta siete bloques cronológicos, incluyendo intervalos sin pagos.
+const barrasFinanzas = computed(() => {
+  const reporte = resumenFinanzas.value
+  if (!reporte) return []
+  const inicio = new Date(reporte.fecha_inicio + 'T12:00:00')
+  const fin = new Date(reporte.fecha_fin + 'T12:00:00')
+  const dias = Math.round((fin - inicio) / 86400000) + 1
+  const cantidad = Math.min(7, dias)
+  if (!cantidad || dias < 1) return []
+  const pagos = new Map(reporte.serie.map(p => [p.fecha, p.total_centavos]))
+  return Array.from({length:cantidad}, (_,i) => {
+    const desde = Math.floor(i * dias / cantidad)
+    const hasta = Math.floor((i+1) * dias / cantidad) - 1
+    let total = 0
+    for (let j=desde; j<=hasta; j++) {
+      const fecha = new Date(inicio)
+      fecha.setDate(inicio.getDate()+j)
+      total += pagos.get(fechaLocal(fecha)) || 0
+    }
+    const primera = new Date(inicio); primera.setDate(inicio.getDate()+desde)
+    const ultima = new Date(inicio); ultima.setDate(inicio.getDate()+hasta)
+    return { id:i, total, etiqueta: desde===hasta ? primera.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) : primera.toLocaleDateString('es-MX',{day:'2-digit',month:'short'})+' – '+ultima.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) }
+  })
 })
-const lineaFinanzas = computed(() => puntosFinanzas.value.map(p => `${p.x},${p.y}`).join(' '))
-const areaFinanzas = computed(() => puntosFinanzas.value.length > 1 ? `35,210 ${lineaFinanzas.value} 665,210` : '')
+const maxBarraFinanzas = computed(() => Math.max(1,...barrasFinanzas.value.map(p => p.total)))
+const promedioFinanzas = computed(() => resumenFinanzas.value?.numero_pagos ? Math.round(resumenFinanzas.value.total_centavos / resumenFinanzas.value.numero_pagos) : 0)
+const mejorBloqueFinanzas = computed(() => [...barrasFinanzas.value].sort((a,b)=>b.total-a.total)[0])
 function seleccionarPeriodo(periodo) {
   periodoFinanzas.value = periodo
   if (periodo !== 'personalizado') [fechaInicio.value,fechaFin.value] = rangoPredeterminado(periodo)
-  cargarFinanzas()
+  if (periodo !== 'personalizado') cargarFinanzas()
 }
 const configurado = ref(null)
 const consultando = ref(false)
@@ -168,7 +184,7 @@ onMounted(consultarEstadoAdmin)
             <option value="dia">Hoy</option><option value="semana">Últimos 7 días</option><option value="mes">Mes actual</option><option value="anual">Año actual</option><option value="personalizado">Personalizado</option>
           </select>
         </div>
-        <div class="flex flex-wrap items-end gap-4 rounded-2xl border border-white/10 bg-[#15171d] p-4 sm:p-5">
+        <div v-if="periodoFinanzas === 'personalizado'" class="flex flex-wrap items-end gap-4 rounded-2xl border border-white/10 bg-[#15171d] p-4 sm:p-5">
           <label class="grid gap-2 text-xs font-semibold text-zinc-400">Desde
             <input v-model="fechaInicio" type="date" @change="periodoFinanzas='personalizado'" class="rounded-lg border border-white/15 bg-[#0d0f13] px-3 py-2.5 text-sm text-white outline-none focus:border-[#ee2046]" />
           </label>
@@ -178,6 +194,7 @@ onMounted(consultarEstadoAdmin)
           <button type="button" :disabled="cargandoFinanzas" @click="cargarFinanzas" class="rounded-lg bg-[#ee2046] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#ff3157] disabled:opacity-50">{{ cargandoFinanzas ? 'Consultando…' : 'Consultar periodo' }}</button>
           <p v-if="resumenFinanzas" class="w-full text-sm font-medium text-zinc-300"><span class="text-[#ff6b85]">Periodo consultado:</span> {{ periodoMostrado }}</p>
         </div>
+        <p v-if="resumenFinanzas && periodoFinanzas !== 'personalizado'" class="text-sm text-zinc-300"><span class="font-semibold text-[#ff6b85]">Periodo consultado:</span> {{ periodoMostrado }}</p>
         <p v-if="errorFinanzas" role="alert" class="text-sm text-red-300">{{ errorFinanzas }}</p>
         <div v-if="resumenFinanzas" class="grid gap-4 md:grid-cols-3">
           <article class="rounded-2xl border border-[#ee2046]/30 bg-gradient-to-br from-[#34101c] to-[#16151b] p-6">
@@ -197,22 +214,22 @@ onMounted(consultarEstadoAdmin)
           </article>
         </div>
         <section v-if="resumenFinanzas" class="rounded-2xl border border-white/10 bg-[#15171d] p-5 sm:p-6">
-          <div class="mb-5 flex flex-wrap items-center justify-between gap-2">
-            <div><p class="text-xs font-bold uppercase tracking-widest text-[#ff6b85]">Evolución de ingresos</p><h3 class="mt-1 text-lg font-bold text-white">Cobros por día</h3></div>
-            <span class="text-xs text-zinc-400">{{ periodoMostrado }}</span>
+          <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div><p class="text-xs font-bold uppercase tracking-widest text-[#ff6b85]">Análisis del periodo</p><h3 class="mt-1 text-lg font-bold text-white">¿Cuándo ingresó más dinero?</h3></div>
+            <span class="text-xs text-zinc-400">Ingresos agrupados en {{ barrasFinanzas.length }} intervalos</span>
           </div>
-          <div v-if="!puntosFinanzas.length" class="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-white/10 text-sm text-zinc-400">No se registraron cobros en este periodo.</div>
-          <template v-else>
-            <svg viewBox="0 0 700 240" preserveAspectRatio="xMidYMid meet" class="block h-auto w-full" role="img" :aria-label="'Gráfica de ingresos diarios del periodo seleccionado'">
-              <defs><linearGradient id="virtus-finanzas" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ee2046" stop-opacity=".35"/><stop offset="100%" stop-color="#ee2046" stop-opacity="0"/></linearGradient></defs>
-              <path v-for="y in [35,90,150,210]" :key="y" :d="'M 0 '+y+' H 700'" stroke="white" stroke-opacity=".08" stroke-dasharray="6 7"/>
-              <polygon v-if="puntosFinanzas.length > 1" :points="areaFinanzas" fill="url(#virtus-finanzas)"/>
-              <polyline v-if="puntosFinanzas.length > 1" :points="lineaFinanzas" fill="none" stroke="#ee2046" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-              <circle v-for="p in puntosFinanzas" :key="p.fecha" :cx="p.x" :cy="p.y" r="4" fill="#ee2046" stroke="white" stroke-width="1.8"><title>{{ formatoFecha(p.fecha) }}: {{ moneda(p.total_centavos) }}</title></circle>
-            </svg>
-            <div class="mt-2 flex justify-between text-xs text-zinc-400"><span>{{ formatoFecha(resumenFinanzas.serie[0].fecha) }}</span><span>{{ formatoFecha(resumenFinanzas.serie[resumenFinanzas.serie.length-1].fecha) }}</span></div>
-            <p class="mt-3 text-xs text-zinc-500">Cada punto representa un día con cobros registrados. Los días sin cobros no se incluyen como puntos.</p>
-          </template>
+          <div class="mb-6 grid gap-3 sm:grid-cols-2">
+            <div class="rounded-xl bg-black/25 p-4"><p class="text-xs text-zinc-400">Promedio por cobro</p><strong class="mt-1 block text-xl font-bold text-white">{{ moneda(promedioFinanzas) }}</strong></div>
+            <div class="rounded-xl bg-black/25 p-4"><p class="text-xs text-zinc-400">Intervalo con mayores ingresos</p><strong class="mt-1 block text-lg font-bold text-white">{{ mejorBloqueFinanzas?.total ? mejorBloqueFinanzas.etiqueta : 'Sin cobros' }}</strong><p class="mt-1 text-xs text-[#ff6b85]">{{ moneda(mejorBloqueFinanzas?.total || 0) }}</p></div>
+          </div>
+          <div v-if="!resumenFinanzas.numero_pagos" class="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-zinc-400">No hubo cobros durante este periodo. El total registrado es $0.</div>
+          <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div v-for="barra in barrasFinanzas" :key="barra.id" class="rounded-xl border border-white/10 bg-[#101216] p-3">
+              <div class="mb-2 flex items-center justify-between gap-2"><span class="text-[11px] text-zinc-400">{{ barra.etiqueta }}</span><strong class="text-xs text-white">{{ moneda(barra.total) }}</strong></div>
+              <div class="h-3 overflow-hidden rounded-full bg-white/10"><div class="h-full rounded-full bg-gradient-to-r from-[#ee2046] to-[#ff728b] transition-all" :style="{width:(barra.total/maxBarraFinanzas*100)+'%'}"></div></div>
+            </div>
+          </div>
+          <p class="mt-4 text-xs leading-relaxed text-zinc-500">Los importes se agrupan por fechas dentro del periodo seleccionado. Los intervalos sin cobros aparecen en cero; no se inventan ingresos.</p>
         </section>
       </section>
       <div v-if="pestaña === 'planes'" class="grid gap-5 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.5fr)]">
