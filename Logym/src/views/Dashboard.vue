@@ -3,7 +3,7 @@ import AppShell from '../components/AppShell.vue'
 import espartano from '../assets/espartano_laurel.svg'
 import { ref, computed, onMounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
-import { obtenerAsistenciasDiarias } from '../services/tauriApi'
+import { obtenerAsistenciasDiarias, obtenerAsistenciasPorHora } from '../services/tauriApi'
 import { onBeforeUnmount } from 'vue'
 import { useDashboard } from '../composables/useDashboard'
 
@@ -16,9 +16,17 @@ const asistenciasHoy = computed(() => metricas.value.find(item => item.titulo ==
 const miembrosActivos = computed(() => metricas.value.find(item => item.titulo === 'Miembros activos')?.valor ?? '0')
 const periodoGrafica = ref('semana')
 const asistenciasDiarias = ref([])
+const asistenciasHorarias = ref([])
 const errorGrafica = ref('')
 const diasGrafica = computed(() => {
   const hoy = new Date()
+  if (periodoGrafica.value === 'dia') {
+    const conteosHoras = new Map(asistenciasHorarias.value.map(d => [d.fecha, Number(d.total)]))
+    return Array.from({length:24},(_,hora) => {
+      const clave = String(hora).padStart(2,'0')
+      return {fecha:clave, etiqueta:clave+':00', total:conteosHoras.get(clave) ?? 0}
+    })
+  }
   const conteos = new Map(asistenciasDiarias.value.map(d => [d.fecha, Number(d.total)]))
   if (periodoGrafica.value === 'mes') {
     return Array.from({ length: 12 }, (_, mes) => {
@@ -44,8 +52,14 @@ const puntosGrafica = computed(() => diasGrafica.value.map((d, i, arr) => ({
 const lineaGrafica = computed(() => puntosGrafica.value.map(p => p.x + ',' + p.y).join(' '))
 const areaGrafica = computed(() => puntosGrafica.value.length ? `35,210 ${lineaGrafica.value} 665,210` : '')
 const topDias = computed(() => [...diasGrafica.value].sort((a, b) => b.total - a.total).slice(0, 5))
+const totalPeriodo = computed(() => diasGrafica.value.reduce((n,d)=>n+d.total,0))
+const horaPico = computed(() => topDias.value[0]?.total ? topDias.value[0] : null)
 async function cargarGrafica() {
-  try { asistenciasDiarias.value = await obtenerAsistenciasDiarias(periodoGrafica.value); errorGrafica.value = '' }
+  try {
+    if (periodoGrafica.value === 'dia') asistenciasHorarias.value = await obtenerAsistenciasPorHora()
+    else asistenciasDiarias.value = await obtenerAsistenciasDiarias(periodoGrafica.value)
+    errorGrafica.value = ''
+  }
   catch (e) { errorGrafica.value = String(e) }
 }
 let desuscribirGrafica
@@ -163,7 +177,7 @@ function etiquetaEstado(estado) {
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p class="eyebrow">ASISTENCIAS</p>
-          <h2 class="section-title">Actividad del gimnasio</h2>
+          <h2 class="section-title">{{ periodoGrafica === 'dia' ? 'Entradas por hora de hoy' : 'Actividad del gimnasio' }}</h2>
         </div>
         <div class="flex gap-1 rounded-lg bg-black/30 p-1" role="group" aria-label="Periodo de asistencias">
           <button v-for="opcion in [{ id: 'dia', nombre: 'Hoy' }, { id: 'semana', nombre: 'Semana' }, { id: 'mes', nombre: 'Meses' }]"
@@ -176,28 +190,33 @@ function etiquetaEstado(estado) {
       <p v-if="errorGrafica" role="alert" class="mt-3 text-xs text-red-300">{{ errorGrafica }}</p>
       <div class="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-4">
         <div class="min-w-0 lg:col-span-3">
+          <p class="mb-2 text-xs text-zinc-400">{{ periodoGrafica === 'dia' ? 'Cada punto representa las entradas durante esa hora.' : 'Cada punto representa el total de entradas del periodo.' }}</p>
           <svg class="block h-auto w-full min-h-44 sm:min-h-56" viewBox="0 0 700 240" preserveAspectRatio="xMidYMid meet" role="img"
             :aria-label="'Tendencia de asistencias: ' + diasGrafica.map(d => d.etiqueta + ' ' + d.total).join(', ')">
             <defs><linearGradient id="virtus-asistencias" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ee2046" stop-opacity=".35"/><stop offset="100%" stop-color="#ee2046" stop-opacity="0"/></linearGradient></defs>
             <path v-for="y in [30, 90, 150, 210]" :key="y" :d="'M 0 ' + y + ' H 700'" stroke="#ffffff" stroke-opacity=".09" stroke-width="1" stroke-dasharray="6 7"/>
             <polygon v-if="puntosGrafica.length > 1" :points="areaGrafica" fill="url(#virtus-asistencias)"/>
             <polyline :points="lineaGrafica" fill="none" stroke="#ee2046" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-            <circle v-for="p in puntosGrafica" :key="p.fecha" :cx="p.x" :cy="p.y" r="4.5" fill="#ee2046" stroke="#fff" stroke-width="2"><title>{{ p.etiqueta }}: {{ p.total }}</title></circle>
+            <g v-for="p in puntosGrafica" :key="p.fecha">
+              <circle :cx="p.x" :cy="p.y" r="4.5" fill="#ee2046" stroke="#fff" stroke-width="2"><title>{{ p.etiqueta }}: {{ p.total }} entradas</title></circle>
+              <text v-if="p.total > 0" :x="p.x" :y="Math.max(14,p.y-11)" text-anchor="middle" fill="white" font-size="11" font-weight="700">{{ p.total }}</text>
+            </g>
           </svg>
           <div class="mt-1 flex justify-between gap-1 text-[10px] text-zinc-400">
-            <span v-for="dia in diasGrafica" :key="dia.fecha" class="min-w-0 flex-1 truncate text-center" :title="dia.fecha">{{ dia.etiqueta }}</span>
+            <span v-for="(dia,indice) in diasGrafica" :key="dia.fecha" class="min-w-0 flex-1 truncate text-center" :title="dia.etiqueta + ': ' + dia.total + ' entradas'">{{ periodoGrafica === 'dia' && indice % 3 !== 0 ? '' : dia.etiqueta }}</span>
           </div>
         </div>
         <aside class="border-t border-white/10 pt-3 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-          <h3 class="mb-3 text-sm font-semibold text-white">Días destacados</h3>
+          <h3 class="mb-3 text-sm font-semibold text-white">{{ periodoGrafica === 'dia' ? 'Horas con más entradas' : 'Periodos destacados' }}</h3>
+          <p class="mb-3 text-xs text-zinc-400">Total: <strong class="text-white">{{ totalPeriodo }} entradas</strong></p>
           <div v-for="dia in topDias" :key="dia.fecha" class="mb-3 flex items-center gap-2 text-xs">
-            <span class="w-10 shrink-0 capitalize text-zinc-400">{{ dia.etiqueta }}</span>
+            <span class="w-14 shrink-0 capitalize text-zinc-400">{{ dia.etiqueta }}</span>
             <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
               <div class="h-full rounded-full bg-[#ee2046]" :style="{ width: (dia.total / maxAsistencias * 100) + '%' }"></div>
             </div>
             <strong class="w-6 text-right text-white">{{ dia.total }}</strong>
           </div>
-          <p class="mt-3 text-xs text-zinc-500">Total: {{ diasGrafica.reduce((n, d) => n + d.total, 0) }} asistencias</p>
+          <p class="mt-3 text-xs text-zinc-400">{{ horaPico ? (periodoGrafica === 'dia' ? 'Hora pico: ' : 'Máximo: ') + horaPico.etiqueta + ' · ' + horaPico.total + ' entradas' : 'Sin entradas registradas' }}</p>
         </aside>
       </div>
     </section>
