@@ -48,6 +48,7 @@ pub fn ingresos(conn: &Connection, periodo: &str) -> Result<ResumenIngresos, Str
         "dia" => "date('now','localtime')",
         "semana" => "date('now','localtime','-6 days')",
         "mes" => "date('now','localtime','start of month')",
+        "anual" => "date('now','localtime','start of year')",
         _ => return Err("Periodo inválido".into()),
     };
     let sql = format!("SELECT COALESCE(SUM(total_centavos),0),COALESCE(SUM(membresia_centavos),0),COALESCE(SUM(inscripcion_centavos),0),COUNT(*) FROM pagos WHERE date(fecha_pago) BETWEEN {inicio} AND date('now','localtime')");
@@ -84,7 +85,7 @@ mod tests {
     #[test]
     fn rejects_invalid_period() {
         let db = Connection::open_in_memory().unwrap();
-        assert!(ingresos(&db,"anual").is_err());
+        assert!(ingresos(&db,"invalido").is_err());
     }
 }
 
