@@ -138,6 +138,7 @@ function etiquetaEstado(estado) {
           <thead>
             <tr class="muted">
               <th>MIEMBRO</th>
+              <th>PLAN</th>
               <th>REGISTRO</th>
               <th>INICIO</th>
               <th>FIN</th>
@@ -150,6 +151,7 @@ function etiquetaEstado(estado) {
               <td><strong>{{ cliente.nombre }}</strong>
                 <div class="muted secondary">ID #{{ cliente.id }} · {{ cliente.telefono || 'Sin teléfono' }}</div>
               </td>
+              <td><span class="inline-flex rounded-md bg-[#ee2046]/10 px-2.5 py-1 text-xs font-semibold text-[#ff6b85]">{{ cliente.tipo_membresia }}</span></td>
               <td class="muted">{{ formatearFecha(cliente.fecha_registro) }}</td>
               <td class="muted">{{ formatearFecha(cliente.fecha_inicio_membresia) }}</td>
               <td class="muted">{{ formatearFecha(cliente.fecha_fin_membresia) }}</td>
@@ -158,7 +160,7 @@ function etiquetaEstado(estado) {
               <td class="muted">{{ cliente.estado_membresia === 'sin_fecha' ? '-' : cliente.dias_restantes }}</td>
             </tr>
             <tr v-if="!busqueda.trim()">
-              <td colspan="6" class="muted empty-state">Escribe un nombre, teléfono o ID para consultar un cliente.</td>
+              <td colspan="7" class="muted empty-state">Escribe un nombre, teléfono o ID para consultar un cliente.</td>
             </tr>
             <tr v-else-if="!clientesFiltrados.length">
               <td colspan="6" class="muted empty-state">No se encontraron clientes con ese criterio.</td>
