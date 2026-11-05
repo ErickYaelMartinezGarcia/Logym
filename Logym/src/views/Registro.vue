@@ -5,7 +5,8 @@ import { useRegistroCliente } from '../composables/useRegistroCliente'
 function soloNumeros(event, campo) {
   const limpio = event.target.value.replace(/\D/g, '').slice(0, 10)
   event.target.value = limpio
-  campo.value = limpio
+  if (campo === 'cliente') registro.telefono.value = limpio
+  else registro.telefonoEmergencia.value = limpio
 }
 const registro = useRegistroCliente()
 const {
@@ -27,8 +28,8 @@ const {
         <p class="eyebrow">DATOS BÁSICOS</p><h2 class="form-panel__title">Información del miembro</h2>
         <label class="field-label">Nombre completo<input v-model="nombre" type="text" placeholder="Ej. Alex Rivera" /></label>
         <div class="phone-grid">
-          <label class="field-label">Teléfono del cliente <span>(opcional)</span><input v-model="telefono" @input="soloNumeros($event, registro.telefono)" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="5512345678" /></label>
-          <label class="field-label">Teléfono de emergencia <span>(opcional)</span><input v-model="telefonoEmergencia" @input="soloNumeros($event, registro.telefonoEmergencia)" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="5512345678" /></label>
+          <label class="field-label">Teléfono del cliente <span>(opcional)</span><input v-model="telefono" @input="soloNumeros($event, 'cliente')" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="5512345678" /></label>
+          <label class="field-label">Teléfono de emergencia <span>(opcional)</span><input v-model="telefonoEmergencia" @input="soloNumeros($event, 'emergencia')" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="5512345678" /></label>
         </div>
         <div class="date-grid">
           <label class="field-label">Fecha de registro<input v-model="fechaRegistro" type="date" /></label>
