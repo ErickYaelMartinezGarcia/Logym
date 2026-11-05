@@ -84,7 +84,6 @@ onMounted(consultarEstadoAdmin)
         <h2>Precio general de inscripción</h2>
         <label>Inscripción (MXN) <input v-model.number="inscripcion" type="number" min="0" step="0.01" /></label>
         <button @click="guardarInscripcion">Guardar inscripción</button>
-        <p class="muted">Poner $0 permite promociones sin costo. En registro solo aparece Sí/No.</p>
       </section>
       <section class="surface admin-panel">
         <h2>Membresías</h2>

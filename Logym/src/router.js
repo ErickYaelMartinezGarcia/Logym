@@ -7,7 +7,7 @@ import AdministracionPrecios from './views/AdministracionPrecios.vue'
 
 const rutas = [
   { path: '/', name: 'Check-in', component: CheckIn },
-  { path: '/registro', name: 'Nuevo miembro', component: Registro },
+  { path: '/registro', name: 'Registro de nuevo miembro', component: Registro },
   { path: '/dashboard', name: 'Dashboard', component: Dashboard },
   { path: '/clientes', name: 'Clientes', component: AdministracionClientes },
   { path: '/precios', name: 'Administración de precios', component: AdministracionPrecios }

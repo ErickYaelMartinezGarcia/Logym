@@ -55,15 +55,16 @@ function cerrarMenu() {
       </nav>
 
       <div style="margin-top:auto;padding:16px 12px 6px">
-        <button type="button" @click="infoAbierta = true; cerrarMenu()" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;border:1px solid #323b46;border-radius:12px;background:#151b22;color:#e7edf3;cursor:pointer;text-align:left">
+       
+      </div>
+      <div class="drawer-footer">
+         <button type="button" @click="infoAbierta = true; cerrarMenu()"
+          style="display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;
+          color:#e7edf3;cursor:pointer;text-align:left">
           <span aria-hidden="true" style="display:grid;place-items:center;width:25px;height:25px;border:1px solid #687786;border-radius:50%;font-weight:800">i</span>
           <span>Información del sistema</span>
         </button>
-      </div>
-      <div class="drawer-footer">
         <span class="status-dot"></span>
-        <span>Sistema operativo</span>
-        <small>v0.1</small>
       </div>
     </aside>
 

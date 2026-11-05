@@ -16,7 +16,6 @@ const {
 <template>
   <AppShell>
     <div class="page-intro">
-      <h1 class="page-title">Hazlo personal.</h1>
       <p class="muted page-intro__description">Registra una identidad completa para que el acceso sea rápido y seguro.</p></div>
     <div class="registration-grid">
       <section class="surface form-panel">
