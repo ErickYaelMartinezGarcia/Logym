@@ -141,6 +141,13 @@ pub fn listar_planes_admin(app: AppHandle, password: String) -> Result<Vec<crate
  crate::membresias::listar_admin(&crate::database::abrir_db(&app)?,&password)
 }
 
+/// Conteo por hora para la vista Hoy; mantiene la verificación de licencia.
+#[tauri::command]
+pub fn obtener_asistencias_por_hora(app: AppHandle) -> Result<Vec<crate::membresias::AsistenciaDiaria>, String> {
+    licencia::verificar(&app)?;
+    crate::membresias::asistencias_por_hora_hoy(&crate::database::abrir_db(&app)?)
+}
+
 #[tauri::command]
 pub fn obtener_asistencias_diarias(app: AppHandle, periodo: String) -> Result<Vec<crate::membresias::AsistenciaDiaria>, String> {
     licencia::verificar(&app)?;
