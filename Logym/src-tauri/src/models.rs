@@ -41,6 +41,7 @@ pub struct ClienteTabla {
 
 #[derive(Debug, Serialize)]
 pub struct ClienteMembresia {
+    pub tipo_membresia: String,
     pub id: i64,
     pub activo: bool,
     pub telefono_emergencia: String,
