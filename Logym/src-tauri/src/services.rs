@@ -3,7 +3,7 @@ use crate::models::*;
 use crate::repositories;
 use crate::secugen;
 use rusqlite::params;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 pub fn inicializar_db(app: &AppHandle) -> Result<String, String> {
     let conn = database::abrir_db(app)?;
@@ -85,6 +85,8 @@ pub fn buscar_cliente_por_huella(app: &AppHandle) -> Result<Option<ClienteCheckI
         ).map_err(|e| e.to_string())?;
         Ok(Some(cliente))
     } else {
+        // Una captura válida sin coincidencia no es un timeout del sensor.
+        let _ = app.emit_all("logym://lector-aviso", "no_registrado");
         Ok(None)
     }
 }
