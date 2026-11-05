@@ -161,7 +161,6 @@ onMounted(consultarEstadoAdmin)
             </label>
             <button class="rounded-xl bg-[#ee2046] px-5 py-3 font-bold text-white transition hover:bg-[#ff3157]" @click="guardarInscripcion">Guardar inscripción</button>
           </section>
-          <button class="rounded-xl border border-[#424852] bg-[#20242b] px-5 py-3 text-sm font-semibold text-white transition hover:border-[#ee2046] hover:bg-[#292e36]" @click="autorizado=false;password=''">Bloquear administración</button>
         </div>
 
         <section class="surface min-w-0 p-5 sm:p-6">
