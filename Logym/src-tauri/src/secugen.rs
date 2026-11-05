@@ -111,7 +111,12 @@ impl SecuGenController {
         let manager = guard.0;
         let info = GLOBAL_INFO.get().ok_or("Info no inicializada")?;
         unsafe {
-            let image_len = (info.image_width * info.image_height) as usize;
+            let width = usize::try_from(info.image_width).map_err(|_| "Ancho de imagen inválido")?;
+            let height = usize::try_from(info.image_height).map_err(|_| "Alto de imagen inválido")?;
+            if !(100..=2000).contains(&width) || !(100..=2000).contains(&height) {
+                return Err("Dimensiones del lector fuera de rango seguro".into());
+            }
+            let image_len = width.checked_mul(height).ok_or("Desbordamiento del buffer de imagen")?;
             let mut image = vec![0u8; image_len];
             let code = (api.get_image_ex)(manager, image.as_mut_ptr(), 4000, std::ptr::null_mut(), 40);
             if code == 54 { // TIMEOUT - no hay dedo
@@ -128,6 +133,9 @@ impl SecuGenController {
     pub fn comparar_templates(&self, stored_hex: &str, captured_hex: &str) -> Result<bool, String> {
         let mut stored = hex_decode(stored_hex)?;
         let mut captured = hex_decode(captured_hex)?;
+        if stored.len() != SG_TEMPLATE_SIZE || captured.len() != SG_TEMPLATE_SIZE {
+            return Err("Plantilla biométrica inválida: se requieren 400 bytes".into());
+        }
         let api = get_api(&self.bin_path)?;
         let guard = GLOBAL_MANAGER.get().ok_or("No init")?.lock().map_err(|e| e.to_string())?;
         unsafe {
@@ -139,6 +147,9 @@ impl SecuGenController {
 
     pub fn identificar_template(&self, conexion: &Connection, template_hex: &str) -> Result<Option<i64>, String> {
         let mut captured = hex_decode(template_hex)?;
+        if captured.len() != SG_TEMPLATE_SIZE {
+            return Err("Plantilla capturada inválida: se requieren 400 bytes".into());
+        }
         let api = get_api(&self.bin_path)?;
         let guard = GLOBAL_MANAGER.get().ok_or("No init")?.lock().map_err(|e| e.to_string())?;
         unsafe {
@@ -146,9 +157,9 @@ impl SecuGenController {
             let lista: Vec<(i64, String)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
             for (id, hex) in lista {
                 let mut stored = match hex_decode(&hex) { Ok(v) => v, Err(_) => continue };
-                if stored.len() < SG_TEMPLATE_SIZE { continue; }
+                if stored.len() != SG_TEMPLATE_SIZE { continue; }
                 let mut matched: BOOL = 0;
-                let _ = (api.match_template)(guard.0, stored.as_mut_ptr(), captured.as_mut_ptr(), SG_SECURITY_LEVEL_NORMAL, &mut matched);
+                check_sdk((api.match_template)(guard.0, stored.as_mut_ptr(), captured.as_mut_ptr(), SG_SECURITY_LEVEL_NORMAL, &mut matched), "SGFPM_MatchTemplate")?;
                 if matched != 0 { return Ok(Some(id)); }
             }
             Ok(None)
