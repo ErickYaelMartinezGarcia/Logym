@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
+import espartano from '../assets/espartano_laurel.svg'
 
 const route = useRoute()
 const menuAbierto = ref(false)
@@ -24,9 +25,9 @@ function cerrarMenu() {
   <div class="app-shell">
     <div v-if="menuAbierto" class="drawer-backdrop" @click="cerrarMenu"></div>
 
-    <aside class="app-drawer" :class="{ 'app-drawer--open': menuAbierto }">
+    <aside class="app-drawer virtus-sidebar" :class="{ 'app-drawer--open': menuAbierto }">
       <div class="drawer-brand">
-        <div class="brand-mark">V</div>
+        <div class="brand-mark !bg-transparent !shadow-none !rounded-none"><img :src="espartano" alt="" class="h-11 w-11 object-contain brightness-0 invert" /></div>
         <div>
           <p class="brand-name">VIRTUS</p>
           <p class="brand-subtitle">GYM / CONTROL</p>
@@ -48,6 +49,7 @@ function cerrarMenu() {
           <span class="drawer-icon" aria-hidden="true">
             <svg v-if="enlace.icon === 'fingerprint'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 11a3 3 0 0 1 3 3v1"/><path d="M8.5 14a3.5 3.5 0 0 1 7 0v3"/><path d="M5.5 14a6.5 6.5 0 0 1 13 0v1"/><path d="M12 5a9 9 0 0 1 9 9"/><path d="M3 14a9 9 0 0 1 9-9"/><path d="M8 20a6 6 0 0 0 8 0"/></svg>
             <svg v-else-if="enlace.icon === 'user-plus'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M18 8v6M15 11h6"/></svg>
+            <svg v-else-if="enlace.icon === 'users'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5"/></svg>
             <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
           </span>
           <span><strong>{{ enlace.label }}</strong><small>{{ enlace.caption }}</small></span>
@@ -99,3 +101,13 @@ function cerrarMenu() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.virtus-sidebar { background: linear-gradient(155deg, #111114 0%, #0a0b0e 70%, #22090f 100%); border-right-color: #3b1a22; }
+.virtus-sidebar :deep(.drawer-link) { border: 0; border-left: 3px solid transparent; border-radius: 10px; padding: 13px 12px; }
+.virtus-sidebar :deep(.drawer-link:hover) { background: rgba(238,32,70,.09); }
+.virtus-sidebar :deep(.drawer-link--active) { background: linear-gradient(90deg, rgba(170,17,44,.55), rgba(238,32,70,.17)); border-left-color: #ee2046; box-shadow: none; }
+.virtus-sidebar :deep(.drawer-link--active .drawer-icon) { color: #fff; }
+.virtus-sidebar :deep(.drawer-icon) { color: #f04461; }
+.virtus-sidebar :deep(.drawer-link strong) { font-weight: 650; }
+</style>
