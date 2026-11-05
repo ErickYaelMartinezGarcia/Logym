@@ -2,8 +2,7 @@
 import { useToasts } from '../services/toast'
 const { avisos, cerrarToast, pausarToast, reanudarToast } = useToasts()
 // Detecta el recurso del proyecto sin inventar su extensión.
-const imagenes = import.meta.glob('../assets/espartano.{svg,png,webp,jpg,jpeg}', { eager: true, query: '?url', import: 'default' })
-const espartano = Object.values(imagenes)[0] || null
+import espartano from '../assets/espartano_laurel.svg'
 const temas = {
   exito: { fondo: 'from-[#0bbf68] via-[#049451] to-[#006b3c]', icono: '✓', insignia: 'bg-[#006d40]' },
   aviso: { fondo: 'from-[#ff9e19] via-[#ef7909] to-[#c65b05]', icono: '!', insignia: 'bg-[#b94c07]' },
