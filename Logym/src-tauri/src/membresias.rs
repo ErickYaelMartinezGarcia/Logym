@@ -156,3 +156,25 @@ pub fn asistencias_periodo(conn: &Connection, periodo: &str) -> Result<i64,Strin
     conn.query_row(&format!("SELECT COUNT(*) FROM asistencias WHERE date(fecha_hora) BETWEEN {inicio} AND date('now','localtime')"),[],|r|r.get(0))
         .map_err(|e|e.to_string())
 }
+
+#[derive(serde::Serialize)]
+pub struct AsistenciaDiaria {
+    pub fecha: String,
+    pub total: i64,
+}
+
+/// Resumen diario agregado, sin identificar a ningún cliente.
+pub fn asistencias_diarias(conn: &Connection, periodo: &str) -> Result<Vec<AsistenciaDiaria>, String> {
+    let inicio = match periodo {
+        "dia" => "date('now','localtime')",
+        "semana" => "date('now','localtime','-6 days')",
+        "mes" => "date('now','localtime','start of month')",
+        _ => return Err("Periodo inválido".into()),
+    };
+    let consulta = format!("SELECT date(fecha_hora), COUNT(*) FROM asistencias WHERE date(fecha_hora) BETWEEN {inicio} AND date('now','localtime') GROUP BY date(fecha_hora) ORDER BY date(fecha_hora)");
+    let mut sentencia = conn.prepare(&consulta).map_err(|e| e.to_string())?;
+    let filas = sentencia.query_map([], |fila| Ok(AsistenciaDiaria { fecha: fila.get(0)?, total: fila.get(1)? })).map_err(|e| e.to_string())?;
+    let mut datos = Vec::new();
+    for fila in filas { datos.push(fila.map_err(|e| e.to_string())?); }
+    Ok(datos)
+}
