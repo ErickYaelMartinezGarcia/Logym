@@ -84,9 +84,10 @@ pub fn obtener_precio_inscripcion(app: AppHandle) -> Result<i64, String> {
 }
 
 #[tauri::command]
-pub fn resumen_ingresos(app: AppHandle, periodo: String) -> Result<crate::membresias::ResumenIngresos, String> {
+pub fn resumen_ingresos(app: AppHandle, periodo: String, password: String) -> Result<crate::membresias::ResumenIngresos, String> {
     licencia::verificar(&app)?;
     let conn = crate::database::abrir_db(&app)?;
+    crate::membresias::autenticar(&conn, &password)?;
     crate::membresias::ingresos(&conn, &periodo)
 }
 
