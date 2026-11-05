@@ -1,6 +1,6 @@
 <script setup>
 import AppShell from '../components/AppShell.vue'
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { resumenIngresos, obtenerAsistenciasPeriodo } from '../services/tauriApi'
 const periodoIngresos = ref('mes')
@@ -21,6 +21,9 @@ const {
   clientes, busqueda, clientesFiltrados, resumenAsistencias, metricas,
   alertasMembresia, membresiasVencidas, membresiasPorVencer
 } = useDashboard()
+
+const asistenciasHoy = computed(() => metricas.value.find(item => item.titulo === 'Entradas de hoy')?.valor ?? '0')
+const miembrosActivos = computed(() => metricas.value.find(item => item.titulo === 'Miembros activos')?.valor ?? '0')
 
 function formatearFecha(valor) {
   if (!valor) return 'Sin fecha'
@@ -53,6 +56,23 @@ function etiquetaEstado(estado) {
         <div class="muted dashboard-status__detail">Última sincronización: ahora</div>
       </div>
     </div>
+    <section aria-label="Resumen operativo" class="mt-6 mb-5 grid grid-cols-1 gap-5 border-y border-white/10 py-6 sm:grid-cols-3 sm:divide-x sm:divide-white/10">
+      <div class="px-2 sm:pr-5">
+        <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Asistencias hoy</p>
+        <strong class="mt-2 block text-4xl font-black tracking-tight text-white">{{ asistenciasHoy }}</strong>
+        <span class="mt-1 block text-xs text-zinc-500">Entradas registradas hoy</span>
+      </div>
+      <div class="px-2 sm:px-6">
+        <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Asistencias últimos 7 días</p>
+        <strong class="mt-2 block text-4xl font-black tracking-tight text-white">{{ resumenAsistencias.ultimos7Dias }}</strong>
+        <span class="mt-1 block text-xs text-zinc-500">Periodo móvil de siete días</span>
+      </div>
+      <div class="px-2 sm:pl-6">
+        <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Miembros activos</p>
+        <strong class="mt-2 block text-4xl font-black tracking-tight text-[#ee2046]">{{ miembrosActivos }}</strong>
+        <span class="mt-1 block text-xs text-zinc-500">Sin mostrar información financiera</span>
+      </div>
+    </section>
     <section class="surface page-section mt-[18px]">
       <div class="section-heading">
         <div>
