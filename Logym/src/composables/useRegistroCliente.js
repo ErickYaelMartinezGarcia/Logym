@@ -109,13 +109,13 @@ export function useRegistroCliente() {
       mostrarMensaje('La fecha de fin no puede ser anterior al inicio de membresía.', 'error')
       return
     }
-    const telefonoValido = (valor) => valor.trim().length <= 25 && /^[0-9+() -]*$/.test(valor.trim())
+    const telefonoValido = (valor) => !valor.trim() || /^[0-9]{10}$/.test(valor.trim())
     if (nombre.value.trim().length > 120 || [...nombre.value].some(ch => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)) {
       mostrarMensaje('El nombre debe tener máximo 120 caracteres y no contener caracteres de control.', 'error')
       return
     }
     if (!telefonoValido(telefono.value) || !telefonoValido(telefonoEmergencia.value)) {
-      mostrarMensaje('Introduce teléfonos válidos de máximo 25 caracteres.', 'error')
+      mostrarMensaje('Los teléfonos deben contener exactamente 10 dígitos numéricos (o quedar vacíos).', 'error')
       return
     }
     if (!tipoMembresiaId.value) { mostrarMensaje('Selecciona una membresía.', 'error'); return }
