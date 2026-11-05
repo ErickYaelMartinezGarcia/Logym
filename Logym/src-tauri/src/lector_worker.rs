@@ -62,6 +62,9 @@ pub fn iniciar(app: AppHandle) {
                 Err(e) => {
                     if !e.contains("SGFPM_GetImageEx: 54") {
                         eprintln!("[LECTOR] {e}");
+                        if e.contains("SGFPM_CreateTemplate") {
+                            let _ = app.emit_all("logym://lector-aviso", "lectura_invalida");
+                        }
                         if e.contains("SGFPM_GetImageEx") && ultimo_intento_reconexion.elapsed() >= Duration::from_secs(5) {
                             ultimo_intento_reconexion = std::time::Instant::now();
                             let recurso = app.path_resolver().resource_dir().unwrap_or_default();
