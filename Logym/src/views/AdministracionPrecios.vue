@@ -1,8 +1,12 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import AppShell from '../components/AppShell.vue'
-import { adminConfigurado, crearPasswordAdmin, validarPasswordAdmin, listarPlanesAdmin, obtenerPrecioInscripcion, guardarPlanAdmin, guardarInscripcionAdmin } from '../services/tauriApi'
+import { adminConfigurado, crearPasswordAdmin, validarPasswordAdmin, listarPlanesAdmin, obtenerPrecioInscripcion, guardarPlanAdmin, guardarInscripcionAdmin, resumenIngresos } from '../services/tauriApi'
 
+const pestaña = ref('planes')
+const periodoFinanzas = ref('mes')
+const resumenFinanzas = ref(null)
+const errorFinanzas = ref('')
 const configurado = ref(null)
 const consultando = ref(false)
 const autorizado = ref(false)
@@ -17,6 +21,16 @@ const aCentavos = n => Math.round(Number(n)*100)
 async function cargar() {
   planes.value = (await listarPlanesAdmin(password.value)).map(p => ({...p, precio_pesos:p.precio_centavos/100}))
   inscripcion.value = (await obtenerPrecioInscripcion())/100
+}
+async function cargarFinanzas() {
+  if (!autorizado.value) return
+  errorFinanzas.value = ''
+  try { resumenFinanzas.value = await resumenIngresos(periodoFinanzas.value, password.value) }
+  catch (e) { resumenFinanzas.value = null; errorFinanzas.value = String(e) }
+}
+function cambiarPestaña(valor) {
+  pestaña.value = valor
+  if (valor === 'finanzas') cargarFinanzas()
 }
 async function entrar() {
   if (configurado.value === null) return
@@ -100,7 +114,41 @@ onMounted(consultarEstadoAdmin)
     </section>
 
     <template v-else>
-      <div class="grid gap-5 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.5fr)]">
+
+      <div class="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+        <div class="flex gap-2 rounded-xl bg-black/20 p-1" role="tablist" aria-label="Secciones administrativas">
+          <button role="tab" :aria-selected="pestaña === 'planes'" @click="cambiarPestaña('planes')" class="rounded-lg px-5 py-2.5 text-sm font-semibold" :class="pestaña === 'planes' ? 'bg-[#ee2046] text-white' : 'text-zinc-400 hover:bg-white/10 hover:text-white'">Planes y precios</button>
+          <button role="tab" :aria-selected="pestaña === 'finanzas'" @click="cambiarPestaña('finanzas')" class="rounded-lg px-5 py-2.5 text-sm font-semibold" :class="pestaña === 'finanzas' ? 'bg-[#ee2046] text-white' : 'text-zinc-400 hover:bg-white/10 hover:text-white'">Finanzas</button>
+        </div>
+        <button class="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/10" @click="autorizado=false;password='';resumenFinanzas=null;pestaña='planes'">Bloquear administración</button>
+      </div>
+      <section v-if="pestaña === 'finanzas'" class="space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#ee2046]/20 bg-gradient-to-r from-[#30121c] via-[#19151b] to-[#111317] p-6">
+          <div><p class="text-xs font-bold uppercase tracking-[.2em] text-[#ff6b85]">Control financiero</p><h2 class="mt-2 text-2xl font-black text-white">Ingresos del gimnasio</h2><p class="mt-2 text-sm text-zinc-400">Cobros reales, sin información de asistencias.</p></div>
+          <select v-model="periodoFinanzas" @change="cargarFinanzas" aria-label="Periodo financiero" class="rounded-xl border border-white/10 bg-[#15171d] px-4 py-3 text-sm font-semibold text-white outline-none focus:border-[#ee2046]">
+            <option value="dia">Hoy</option><option value="semana">Últimos 7 días</option><option value="mes">Mes actual</option><option value="anual">Año actual</option>
+          </select>
+        </div>
+        <p v-if="errorFinanzas" role="alert" class="text-sm text-red-300">{{ errorFinanzas }}</p>
+        <div v-if="resumenFinanzas" class="grid gap-4 md:grid-cols-3">
+          <article class="rounded-2xl border border-[#ee2046]/30 bg-gradient-to-br from-[#34101c] to-[#16151b] p-6">
+            <p class="text-xs font-semibold uppercase tracking-wider text-zinc-300">Total cobrado</p>
+            <strong class="mt-4 block text-3xl font-black text-white">{{ moneda(resumenFinanzas.total_centavos) }}</strong>
+            <p class="mt-3 text-xs text-zinc-400">{{ resumenFinanzas.numero_pagos }} movimientos registrados</p>
+          </article>
+          <article class="rounded-2xl border border-white/10 bg-[#16191e] p-6">
+            <p class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Membresías</p>
+            <strong class="mt-4 block text-3xl font-black text-white">{{ moneda(resumenFinanzas.membresias_centavos) }}</strong>
+            <div class="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10"><div class="h-full rounded-full bg-[#ee2046]" :style="{ width: resumenFinanzas.total_centavos ? (resumenFinanzas.membresias_centavos / resumenFinanzas.total_centavos * 100) + '%' : '0%' }"></div></div>
+          </article>
+          <article class="rounded-2xl border border-white/10 bg-[#16191e] p-6">
+            <p class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Inscripciones</p>
+            <strong class="mt-4 block text-3xl font-black text-white">{{ moneda(resumenFinanzas.inscripciones_centavos) }}</strong>
+            <div class="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10"><div class="h-full rounded-full bg-[#ff9a54]" :style="{ width: resumenFinanzas.total_centavos ? (resumenFinanzas.inscripciones_centavos / resumenFinanzas.total_centavos * 100) + '%' : '0%' }"></div></div>
+          </article>
+        </div>
+      </section>
+      <div v-if="pestaña === 'planes'" class="grid gap-5 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.5fr)]">
         <div class="grid content-start gap-5">
           <section class="surface grid gap-5 p-6">
             <div>
