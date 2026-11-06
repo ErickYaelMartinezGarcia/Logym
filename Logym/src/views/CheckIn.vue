@@ -5,7 +5,7 @@ import { useCheckIn } from '../composables/useCheckIn'
 const {
   tiposMembresia, tipoMembresiaId,
   router, mensaje, estadoCheckin, cargando, procesandoRenovacion, clienteDetectado, modalAbierta,
-  confirmandoRenovacion, lectorActivo, formatearFecha, etiquetaEstado, diasRestantes,
+  confirmandoRenovacion, lectorActivo, estadoLector, formatearFecha, etiquetaEstado, diasRestantes,
   capturarAcceso, cerrarModal, solicitarRenovacion, renovar
 } = useCheckIn()
 </script>
@@ -27,7 +27,7 @@ const {
         </div>
         <div class="reader-status"><span class="reader-status__dot"
             :class="{ 'reader-status__dot--active': lectorActivo }"></span>
-            <span>{{ lectorActivo ? 'Lector Hamster Pro20 · listo' : 'Iniciando lector...' }}</span></div>
+            <span>{{ lectorActivo ? 'Lector Hamster Pro20 · listo' : estadoLector === 'no_disponible' ? 'Lector no disponible' : estadoLector === 'recuperando' ? 'Recuperando lector...' : 'Iniciando lector...' }}</span></div>
         <div class="checkin-status" :class="`checkin-status--${estadoCheckin}`">
           <p class="checkin-message">{{ mensaje }}</p>
         </div> <button class="text-button text-button--secondary" :disabled="cargando" @click="capturarAcceso(true)">{{
