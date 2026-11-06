@@ -70,10 +70,21 @@ pub fn listar_clientes_membresia(app: &AppHandle) -> Result<Vec<ClienteMembresia
 
 // ESTA ES LA BUENA - ya no recibe template string de Vue, lo captura ella
 pub fn buscar_cliente_por_huella(app: &AppHandle) -> Result<Option<ClienteCheckIn>, String> {
+    buscar_cliente_por_huella_worker(app).map_err(Into::into)
+}
+
+// Conserva los códigos del SDK hasta el supervisor; IPC sigue devolviendo String.
+pub fn buscar_cliente_por_huella_worker(app: &AppHandle) -> Result<Option<ClienteCheckIn>, secugen::SecuGenError> {
     let conn = database::abrir_db(app)?;
     let resource_dir = app.path_resolver().resource_dir().unwrap_or_default();
-    let bin_path = secugen::resolve_bin_path(&resource_dir).map_err(|e| e.to_string())?;
-    let controller = secugen::SecuGenController::from_bin_path(&bin_path)?;
+    let bin_path = secugen::resolve_bin_path(&resource_dir).map_err(secugen::SecuGenError::Initialization)?;
+    let controller = match crate::lector_worker::inicializar_lector(&bin_path).map_err(secugen::SecuGenError::Initialization)? {
+        Some(controller) => controller,
+        None => return Ok(None),
+    };
+    // Informar SDK inicializado antes de esperar la captura de 4000 ms.
+    // Este estado conserva la alerta hasta obtener una imagen válida.
+    secugen::publicar_evidencia(app);
 
     let captured = controller.capturar_template()?;
     let captured = match captured { Some(value) => value, None => return Ok(None) };
@@ -131,7 +142,7 @@ pub fn capturar_huella(app: &AppHandle) -> Result<Option<String>, String> {
     let resource_path = app.path_resolver().resource_dir().unwrap_or_default();
     let bin_path = secugen::resolve_bin_path(&resource_path)?;
     let controller = secugen::SecuGenController::from_bin_path(&bin_path)?;
-    controller.capturar_template()
+    controller.capturar_template().map_err(Into::into)
 }
 
 pub fn comparar_huella(app: &AppHandle, t1: &str, t2: &str) -> Result<bool, String> {
