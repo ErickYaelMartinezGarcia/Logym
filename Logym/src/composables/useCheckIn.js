@@ -1,5 +1,6 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/tauri'
 import { useRouter } from 'vue-router'
 import { pausarLectorGlobal, renovarMembresia, listarTiposMembresia } from '../services/tauriApi'
 
@@ -18,8 +19,34 @@ export function useCheckIn() {
   const clienteDetectado = ref(null)
   const modalAbierta = ref(false)
   const confirmandoRenovacion = ref(false)
-  const lectorActivo = ref(true)
+  const lectorActivo = ref(false)
+  const estadoLector = ref('inicializando')
   let dejarDeEscuchar = null
+  let dejarDeEscucharEstado = null
+  let consultaLectorTimer = null
+  let revisionLector = -1
+  let desmontado = false
+
+  function actualizarEstadoLector(payload) {
+    if (!['inicializando', 'disponible', 'recuperando', 'no_disponible'].includes(payload?.estado)
+      || !Number.isSafeInteger(payload.revision) || payload.revision < revisionLector) return
+    revisionLector = payload.revision
+    estadoLector.value = payload.estado
+    lectorActivo.value = payload.estado === 'disponible'
+  }
+
+  async function consultarEstadoLector() {
+    try {
+      const estado = await invoke('estado_lector')
+      if (!desmontado) actualizarEstadoLector(estado)
+    } catch (error) {
+      if (!desmontado) {
+        lectorActivo.value = false
+        estadoLector.value = 'no_disponible'
+        console.error('No se pudo consultar el estado del lector:', error)
+      }
+    }
+  }
 
   function formatearFecha(valor) {
     if (!valor) return 'Sin fecha'
@@ -88,6 +115,11 @@ export function useCheckIn() {
   }
   onMounted(async () => {
     try {
+      dejarDeEscucharEstado = await listen('logym://lector-estado', ({ payload }) => actualizarEstadoLector(payload))
+    } catch (error) { console.error('No se pudo escuchar el estado del lector:', error) }
+    await consultarEstadoLector()
+    if (!desmontado) consultaLectorTimer = setInterval(consultarEstadoLector, 2000)
+    try {
       tiposMembresia.value = (await listarTiposMembresia()).filter(plan => !plan.solo_alta)
       if (tiposMembresia.value.length) tipoMembresiaId.value = String(tiposMembresia.value[0].id)
     } catch (error) { mensaje.value = `No se pudieron cargar las membresías: ${String(error)}` }
@@ -95,13 +127,16 @@ export function useCheckIn() {
     catch (error) { mensaje.value = `No se pudo escuchar el lector: ${String(error)}` }
   })
   onBeforeUnmount(() => {
+    desmontado = true
+    clearInterval(consultaLectorTimer)
+    dejarDeEscucharEstado?.()
     dejarDeEscuchar?.()
     if (modalAbierta.value) pausarLectorGlobal(false).catch(console.error)
   })
   return {
     tiposMembresia, tipoMembresiaId,
     router, mensaje, estadoCheckin, cargando, procesandoRenovacion, clienteDetectado,
-    modalAbierta, confirmandoRenovacion, lectorActivo, formatearFecha, etiquetaEstado,
+    modalAbierta, confirmandoRenovacion, lectorActivo, estadoLector, formatearFecha, etiquetaEstado,
     diasRestantes, capturarAcceso, cerrarModal, solicitarRenovacion, renovar
   }
 }
