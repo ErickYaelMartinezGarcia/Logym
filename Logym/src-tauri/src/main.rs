@@ -4,6 +4,7 @@ mod commands;
 mod database;
 mod models;
 mod lector_worker;
+mod lector_estado;
 mod licencia;
 mod membresias;
 mod repositories;
@@ -16,7 +17,6 @@ use commands::{
     listar_clientes, listar_clientes_membresia, obtener_metricas,
     renovar_membresia, registrar_asistencia,
 };
-use std::path::PathBuf;
 
 fn main() {
     std::panic::set_hook(Box::new(|info| {
@@ -26,18 +26,10 @@ fn main() {
 
     tauri::Builder::default()
         .setup(|app| {
-            if licencia::verificar(&app.handle()).is_err() { println!("[LICENCIA] Activación requerida"); return Ok(()); }
-            let resource_dir = app.path_resolver().resource_dir().unwrap_or_else(|| PathBuf::from("."));
-            println!("[INIT] resource_dir: {}", resource_dir.display());
-            
-            if let Ok(bin_path) = secugen::resolve_bin_path(&resource_dir) {
-                println!("[INIT] bin_path: {}", bin_path.display());
-                match secugen::SecuGenController::from_bin_path(&bin_path) {
-                    Ok(_) => println!("[INIT] Motor 1:1 listo"),
-                    Err(e) => eprintln!("[INIT] Motor no iniciado: {}", e),
-                }
-            } else {
-                eprintln!("[INIT] No se encontró carpeta bin");
+            if licencia::verificar(&app.handle()).is_err() {
+                println!("[LICENCIA] Activación requerida");
+                lector_worker::iniciar(app.handle());
+                return Ok(());
             }
 
             match database::abrir_db(&app.handle()) {
@@ -61,6 +53,7 @@ fn main() {
             commands::estado_licencia,
             commands::activar_licencia,
             commands::pausar_lector_global,
+            commands::estado_lector,
             actualizar_cliente,
             establecer_cliente_activo,
             eliminar_cliente_definitivamente,
@@ -77,6 +70,12 @@ fn main() {
             comparar_huella,
             check_in,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                api.prevent_exit();
+                lector_worker::cerrar(app.clone());
+            }
+        });
 }
