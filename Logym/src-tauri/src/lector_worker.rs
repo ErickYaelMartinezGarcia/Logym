@@ -129,7 +129,7 @@ pub fn iniciar(app: AppHandle) {
                 Err(e) => {
                     if PAUSADO.load(Ordering::SeqCst) { continue; }
                     let mensaje = e.to_string();
-                    if mensaje != ultimo_error || ultimo_log.elapsed() >= Duration::from_secs(5) {
+                    if mensaje != ultimo_error || ultimo_log.elapsed() >= Duration::from_secs(60) {
                         eprintln!("[LECTOR] {mensaje}");
                         ultimo_error = mensaje.clone();
                         ultimo_log = std::time::Instant::now();
