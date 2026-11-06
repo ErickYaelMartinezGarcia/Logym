@@ -1,11 +1,48 @@
 <script setup>
-import { onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { invoke } from '@tauri-apps/api/tauri'
 import { listen } from '@tauri-apps/api/event'
 
 import ToastNotifications from './components/ToastNotifications.vue'
 import { mostrarToast } from './services/toast'
 let desuscribir = null
 let desuscribirLector = null
+let desuscribirEstadoLector = null
+const lector = ref({ estado: 'inicializando', detalle: '', revision: -1,
+  usb_presente: false, sdk_inicializado: false, captura_comprobada: false })
+const falloConsultaLector = ref(false)
+let consultarLectorTimer = null
+let avisoLectorPendiente = false
+let desmontado = false
+const textoLector = computed(() => falloConsultaLector.value ? 'No se pudo consultar el estado del lector' : ({
+  inicializando: 'Inicializando lector',
+  recuperando: lector.value.sdk_inicializado ? 'Esperando comprobar la captura' : 'Recuperando lector',
+  no_disponible: 'Lector no disponible',
+})[lector.value.estado])
+
+function actualizarLector(payload) {
+  if (!['inicializando', 'disponible', 'recuperando', 'no_disponible'].includes(payload?.estado)
+    || !Number.isSafeInteger(payload.revision) || payload.revision < lector.value.revision) return
+  lector.value = payload
+  falloConsultaLector.value = false
+  if (payload.estado === 'no_disponible' && !avisoLectorPendiente) {
+    avisoLectorPendiente = true
+    mostrarToast({ titulo: 'Lector no disponible', detalle: 'Se reintentará automáticamente. Consulta el indicador del lector si el problema persiste.', tipo: 'error' })
+  } else if (payload.estado === 'disponible' && avisoLectorPendiente) {
+    avisoLectorPendiente = false
+    mostrarToast({ titulo: 'Lectura recuperada', detalle: 'El SDK confirmó una captura válida.', tipo: 'exito' })
+  }
+}
+
+async function consultarLector() {
+  try {
+    const estado = await invoke('estado_lector')
+    if (!desmontado) actualizarLector(estado)
+  } catch (error) {
+    if (!desmontado) falloConsultaLector.value = true
+    console.error('Consulta del lector:', error)
+  }
+}
 let ultimoAvisoLector = 0
 
 // La respuesta de Rust conserva la causa exacta del rechazo; no ocultar errores.
@@ -21,11 +58,18 @@ function presentarResultado(resultado) {
 }
 
 onMounted(async () => {
+  try {
+    desuscribirEstadoLector = await listen('logym://lector-estado', ({ payload }) => actualizarLector(payload))
+  } catch (error) { console.error('Eventos del lector:', error) }
+  // Listener primero y snapshot después; revision descarta respuestas atrasadas.
+  await consultarLector()
+  consultarLectorTimer = setInterval(consultarLector, 2000)
   desuscribirLector = await listen('logym://lector-aviso', ({ payload }) => {
     if (Date.now() - ultimoAvisoLector < 5000) return
     ultimoAvisoLector = Date.now()
     if (payload === 'no_registrado') mostrarToast({ titulo: 'Cliente no registrado', detalle: 'No encontramos una huella registrada que coincida.', tipo: 'aviso' })
     if (payload === 'lectura_invalida') mostrarToast({ titulo: 'Lectura no realizada correctamente', detalle: 'Coloca el dedo completo sobre el sensor e intenta nuevamente.', tipo: 'error' })
+    if (payload === 'dedo_rechazado') mostrarToast({ titulo: 'Lectura rechazada por el sensor', detalle: 'El sensor activó su detección de dedo falso. Retira el dedo y vuelve a colocarlo.', tipo: 'aviso' })
   })
   desuscribir = await listen('logym://checkin', ({ payload }) => {
     const { cliente, resultado } = payload || {}
@@ -34,14 +78,22 @@ onMounted(async () => {
   })
 })
 onBeforeUnmount(() => {
+  desmontado = true
+  clearInterval(consultarLectorTimer)
   desuscribir?.()
   desuscribirLector?.()
+  desuscribirEstadoLector?.()
 })
 </script>
 
 <template>
   <div class="min-h-screen bg-[#090a0c] text-white">
     <router-view />
+    <div v-if="falloConsultaLector || lector.estado !== 'disponible'" role="status" aria-live="polite" :title="lector.detalle"
+      class="fixed bottom-3 left-3 z-[100] flex items-center gap-2 rounded-lg border border-amber-400/20 bg-[#151515] px-3 py-2 text-xs text-amber-200 shadow-md">
+      <span aria-hidden="true" class="h-2 w-2 rounded-full bg-amber-400"></span>
+      <span>{{ textoLector }}<span v-if="lector.detalle" class="mt-1 block max-w-sm text-[11px] text-amber-200/70">{{ lector.detalle }}</span></span>
+    </div>
     <ToastNotifications />
   </div>
 </template>
