@@ -30,7 +30,7 @@ if (action === 'crear') {
   writeFileSync(destination, publicHex + '\n')
   console.log('Par Ed25519 creado; clave privada retenida exclusivamente en la ruta solicitada.')
 } else if (action === 'firmar') {
-  if (!/^LOGYM1-[0-9a-f]{64}$/.test(request || '')) throw Error('Solicitud inválida')
+  if (!/^LOGYM2-HW-[0-9a-f]{64}$/.test(request || '')) throw Error('Solicitud inválida')
   if (inside(realpathSync(parent))) throw Error('La carpeta privada pertenece al proyecto')
   const key = createPrivateKey(readFileSync(privatePath))
   if (key.asymmetricKeyType !== 'ed25519') throw Error('Se requiere Ed25519')

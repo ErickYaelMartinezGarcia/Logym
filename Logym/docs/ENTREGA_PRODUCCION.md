@@ -4,6 +4,23 @@ Esta entrega NO certifica instalación limpia ni funcionamiento físico del lect
 Las comprobaciones del equipo destino listadas al final son obligatorias antes
 de poner el gimnasio en operación. No se usaron datos reales en las pruebas.
 
+## Identidad de hardware LOGYM2-HW
+
+La solicitud actual es `LOGYM2-HW-<SHA-256>` y firma UUID SMBIOS y datos de
+placa normalizados, con la misma clave Ed25519. LOGYM1 requiere reemisión.
+Consultar [procedimiento y limitaciones](LICENCIA_HARDWARE.md) antes de publicar.
+Validación del cambio: **83 Rust + 30 JavaScript PASS, 0 fallos y 0
+ignoradas**. También pasaron build frontend, cargo check/test/build release
+con --locked, aislamiento del release y recuperación con bases sintéticas.
+Evidencia: `.artifacts/hardware-license/validated/` y
+`.artifacts/hardware-license/maintenance-cli-results.json`.
+El instalador y los resultados históricos documentados abajo corresponden al
+commit `4d4d3b5`: **ese instalador no incluye la identidad de hardware nueva**.
+Para esta revisión se debe reconstruir NSIS desde el commit publicado y
+comprobar el ejecutable empaquetado. El manifiesto local de correspondencia
+queda en `.artifacts/hardware-license/publicacion.json`; los hashes de la
+entrega actual se facilitan junto con el instalador.
+
 ## Cambios y verificaciones
 
 - SQLCipher conserva la clave aleatoria local protegida por DPAPI y rechaza una
@@ -129,7 +146,7 @@ pública sobre una identidad sintética que no corresponde a una instalación re
 En la PC emisora, con Node instalado:
 
 ```powershell
-node tools/licencias.mjs firmar 'RUTA_PRIVADA_FUERA_DEL_PROYECTO' 'LOGYM1-codigo_mostrado_por_la_app'
+node tools/licencias.mjs firmar 'RUTA_PRIVADA_FUERA_DEL_PROYECTO' 'LOGYM2-HW-codigo_mostrado_por_la_app'
 ```
 
 Pegar la licencia resultante en la pantalla de activación del equipo destino.

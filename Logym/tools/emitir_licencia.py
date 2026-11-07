@@ -3,6 +3,7 @@ Requiere: py -m pip install cryptography
 La clave privada se guarda FUERA del repositorio. Nunca compartirla.
 """
 import argparse
+import re
 import pathlib
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
@@ -10,7 +11,7 @@ from cryptography.hazmat.primitives import serialization
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("accion", choices=["crear-claves", "firmar"])
-    parser.add_argument("--solicitud", help="Código LOGYM1-... mostrado por la app")
+    parser.add_argument("--solicitud", help="Código LOGYM2-HW-... mostrado por la app")
     parser.add_argument("--privada", required=True, help="Ruta absoluta fuera del repositorio")
     args = parser.parse_args()
     privada = pathlib.Path(args.privada).resolve()
@@ -28,8 +29,8 @@ def main():
         print("Clave pública creada: license_public_key.hex (copiar a src-tauri/src/ antes del build release)")
         print("IMPORTANTE: nunca subas la clave privada a GitHub.")
     else:
-        if not args.solicitud or not args.solicitud.startswith("LOGYM1-") or len(args.solicitud) != 71:
-            raise SystemExit("Solicitud inválida; se espera LOGYM1- seguido de 64 dígitos hex.")
+        if not args.solicitud or not re.fullmatch(r"LOGYM2-HW-[0-9a-f]{64}", args.solicitud):
+            raise SystemExit("Solicitud inválida; se espera LOGYM2-HW- seguido de 64 dígitos hex.")
         key = serialization.load_pem_private_key(privada.read_bytes(), password=None)
         signature = key.sign(args.solicitud.encode("ascii")).hex()
         print("LICENCIA PERMANENTE:\n" + args.solicitud + ":" + signature)
