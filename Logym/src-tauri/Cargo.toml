@@ -30,7 +30,7 @@ env_logger = "0.10"
 
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = ["Win32_Security_Cryptography", "Win32_System_Memory", "Win32_Foundation", "Win32_System_LibraryLoader", "Win32_Devices_DeviceAndDriverInstallation"] }
+windows-sys = { version = "0.52", features = ["Win32_Security_Cryptography", "Win32_System_Memory", "Win32_Foundation", "Win32_System_LibraryLoader", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Threading", "Win32_Storage_FileSystem"] }
 
 [features]
 default = ["custom-protocol"]

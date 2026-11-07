@@ -6,7 +6,14 @@ use tauri::{AppHandle, Manager};
 #[tauri::command]
 pub fn inicializar_db(app: AppHandle) -> Result<String, String> { licencia::verificar(&app)?; services::inicializar_db(&app) }
 #[tauri::command]
-pub fn guardar_cliente(app: AppHandle, cliente: DatosCliente) -> Result<i64, String> { { licencia::verificar(&app)?; let id = services::guardar_cliente(&app, cliente)?; let _ = app.emit_all("logym://datos-actualizados", "cliente"); Ok(id) } }
+pub async fn guardar_cliente(app: AppHandle, cliente: DatosCliente) -> Result<i64, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        licencia::verificar(&app)?;
+        let id = services::guardar_cliente(&app, cliente)?;
+        let _ = app.emit_all("logym://datos-actualizados", "cliente");
+        Ok(id)
+    }).await.map_err(|e|format!("No se pudo completar el alta: {e}"))?
+}
 #[tauri::command]
 pub fn listar_clientes(app: AppHandle) -> Result<Vec<crate::models::ClienteTabla>, String> { licencia::verificar(&app)?; services::listar_clientes(&app) }
 #[tauri::command]

@@ -1,9 +1,13 @@
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, VerifyingKey};
 use sha2::{Digest, Sha256};
 use std::fs;
 
-// Sustituir con la clave PUBLICA del emisor antes de distribuir un release.
+// Solo clave pública Ed25519. El emisor privado vive fuera del proyecto.
 const CLAVE_PUBLICA: &str = include_str!("license_public_key.hex");
+
+#[cfg(test)]
+#[path = "tests/licencia.rs"]
+mod pruebas_automatizadas;
 
 fn carpeta(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     let p = app.path_resolver().app_data_dir().ok_or("No se encontró carpeta de datos")?;
@@ -71,12 +75,20 @@ pub fn verificar(app: &tauri::AppHandle) -> Result<(), String> {
 }
 
 pub fn validar_texto(app: &tauri::AppHandle, licencia: &str) -> Result<(), String> {
+    validar_firma(&solicitud(app)?, licencia)
+}
+
+fn validar_firma(solicitud: &str, licencia: &str) -> Result<(), String> {
     let (id, firma_hex) = licencia.trim().split_once(':').ok_or("Licencia inválida")?;
-    if id != solicitud(app)? { return Err("Licencia de otra instalación".into()); }
+    if id.len()!=71 || !id.starts_with("LOGYM1-") || !id[7..].bytes().all(|b|b.is_ascii_hexdigit()) {
+        return Err("Identidad de licencia inválida".into());
+    }
+    if id != solicitud { return Err("Licencia de otra instalación".into()); }
     let key: [u8; 32] = decode(CLAVE_PUBLICA.trim())?.try_into().map_err(|_| "Clave pública no configurada")?;
     let key = VerifyingKey::from_bytes(&key).map_err(|_| "Clave pública inválida")?;
     let sig: [u8; 64] = decode(firma_hex)?.try_into().map_err(|_| "Firma inválida")?;
-    key.verify(id.as_bytes(), &Signature::from_bytes(&sig)).map_err(|_| "Firma de licencia inválida".into())
+    if key.is_weak() { return Err("Clave pública insegura o no configurada".into()); }
+    key.verify_strict(id.as_bytes(), &Signature::from_bytes(&sig)).map_err(|_| "Firma de licencia inválida".into())
 }
 
 pub fn activar(app: &tauri::AppHandle, licencia: String) -> Result<(), String> {

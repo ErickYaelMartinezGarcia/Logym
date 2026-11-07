@@ -28,9 +28,20 @@
       "csp": "default-src 'self' http://localhost:5173; img-src 'self' data: blob: asset: http://asset.localhost; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     },
     "bundle": {
+      "active": true,
+      "targets": ["nsis"],
       "identifier": "com.virtusgym.desktop",
+      "icon": ["icons/icon.ico"],
+      "windows": {
+        "webviewInstallMode": { "type": "offlineInstaller" },
+        "nsis": { "installMode": "currentUser", "languages": ["Spanish", "English"] }
+      },
       "resources": [
-        "bin/**/*"
+        "bin/sgfplib.dll",
+        "bin/sgfpamx.dll",
+        "bin/sgwsqlib.dll",
+        "bin/sgfdusdax64.dll",
+        "bin/sgbledev.dll"
       ]
     }
   }

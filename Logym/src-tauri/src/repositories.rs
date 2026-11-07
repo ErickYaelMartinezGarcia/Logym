@@ -1,7 +1,34 @@
 use rusqlite::{params, Connection};
 use crate::models::*;
 
-pub fn guardar_cliente(conexion: &Connection, datos: DatosCliente) -> Result<i64, String> {
+#[cfg(test)]
+pub use pruebas::guardar_cliente;
+
+/// La comprobación 1:1 y el alta comparten el bloqueo de escritura para evitar
+/// que dos altas concurrentes acepten la misma huella. Incluye inactivos.
+pub fn guardar_cliente_sin_duplicar(conexion: &Connection, datos: DatosCliente,
+    mut comparar: impl FnMut(&str,&str) -> Result<bool,String>) -> Result<i64,String> {
+    let tx = rusqlite::Transaction::new_unchecked(conexion,rusqlite::TransactionBehavior::Immediate).map_err(|e|e.to_string())?;
+    {
+        let mut stmt = tx.prepare("SELECT id,template_huella FROM clientes WHERE COALESCE(template_huella,'')<>'' ORDER BY id").map_err(|e|e.to_string())?;
+        let mut rows = stmt.query([]).map_err(|e|e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e|e.to_string())? {
+            let id: i64 = row.get(0).map_err(|e|e.to_string())?;
+            let stored: String = row.get(1).map_err(|e|e.to_string())?;
+            if stored.len()!=800 || !stored.bytes().all(|b|b.is_ascii_hexdigit()) {
+                return Err(format!("Plantilla del cliente #{id} dañada; no se pudo descartar duplicidad"));
+            }
+            if comparar(&stored,&datos.template_huella)? {
+                return Err(format!("La huella ya pertenece al cliente #{id}; revisa su registro antes de darlo de alta"));
+            }
+        }
+    }
+    let id = insertar_cliente(&tx,datos)?;
+    tx.commit().map_err(|e|e.to_string())?;
+    Ok(id)
+}
+
+fn insertar_cliente(conexion: &Connection, datos: DatosCliente) -> Result<i64,String> {
     let plan_id = datos.tipo_membresia_id.ok_or("Selecciona una membresía")?;
     let (plan_nombre, precio): (String, i64) = conexion.query_row(
         "SELECT nombre, precio_centavos FROM tipos_membresia WHERE id=?1 AND activo=1",
@@ -10,7 +37,7 @@ pub fn guardar_cliente(conexion: &Connection, datos: DatosCliente) -> Result<i64
     let inscripcion = if datos.incluir_inscripcion {
         crate::membresias::inscripcion(conexion)?
     } else { 0 };
-    let tx = conexion.unchecked_transaction().map_err(|e| e.to_string())?;
+    let tx = conexion;
     tx.execute(
         "INSERT INTO clientes (nombre, telefono, telefono_emergencia, fecha_registro, fecha_inicio_membresia, fecha_fin_membresia, foto_base64, template_huella)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -26,12 +53,11 @@ pub fn guardar_cliente(conexion: &Connection, datos: DatosCliente) -> Result<i64
         "INSERT INTO pagos(cliente_id,membresia_id,concepto_membresia,membresia_centavos,inscripcion_centavos,total_centavos,fecha_pago,tipo) VALUES(?1,?2,?3,?4,?5,?6,datetime('now','localtime'),'alta')",
         params![id,plan_id,plan_nombre,precio,inscripcion,precio+inscripcion],
     ).map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
     Ok(id)
 }
 
 pub fn listar_clientes(conexion: &Connection) -> Result<Vec<ClienteTabla>, String> {
-    let mut stmt = conexion.prepare("SELECT id, nombre, telefono, fecha_fin_membresia, COALESCE(foto_base64,'') FROM clientes ORDER BY id DESC LIMIT 100").map_err(|e| e.to_string())?;
+    let mut stmt = conexion.prepare("SELECT id, nombre, COALESCE(telefono,''), COALESCE(fecha_fin_membresia,''), COALESCE(foto_base64,'') FROM clientes ORDER BY id DESC LIMIT 100").map_err(|e| e.to_string())?;
     let rows = stmt.query_map([], |r| Ok(ClienteTabla{ id: r.get(0)?, nombre: r.get(1)?, telefono: r.get(2)?, fecha_fin_membresia: r.get(3)?, foto_base64: r.get(4)? })).map_err(|e| e.to_string())?;
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
@@ -98,24 +124,50 @@ pub fn registrar_asistencia(conexion: &Connection, cliente_id: i64) -> Result<St
 }
 
 pub fn renovar_membresia(conexion: &Connection, cliente_id: i64, plan_id: i64) -> Result<String, String> {
-    let (nombre, precio, meses): (String, i64, i64) = conexion.query_row(
+    // Serializa las renovaciones concurrentes para leer y extender el período
+    // de forma atómica, sin perder días pagados.
+    let tx = rusqlite::Transaction::new_unchecked(conexion, rusqlite::TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
+    let (nombre, precio, meses): (String, i64, i64) = tx.query_row(
         "SELECT nombre,precio_centavos,duracion_meses FROM tipos_membresia WHERE id=?1 AND activo=1 AND solo_alta=0",
         params![plan_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))
     ).map_err(|_| "Selecciona una membresía vigente".to_string())?;
-    let tx = conexion.unchecked_transaction().map_err(|e| e.to_string())?;
     let dias = chrono::Local::now().date_naive();
-    let fin = dias.checked_add_months(chrono::Months::new(meses as u32)).ok_or("Duración inválida")?;
-    let inicio = dias.format("%Y-%m-%d").to_string();
+    let anteriores: (String,String) = tx.query_row(
+        "SELECT COALESCE(fecha_inicio_membresia,''),COALESCE(fecha_fin_membresia,'') FROM clientes WHERE id=?1 AND activo=1",
+        [cliente_id], |r| Ok((r.get(0)?,r.get(1)?)),
+    ).map_err(|_| "Cliente no encontrado o desactivado".to_string())?;
+    let (inicio_cliente, inicio_periodo, fin) = periodo_renovacion(dias, &anteriores.0, &anteriores.1, meses)?;
+    let inicio = inicio_cliente.to_string();
     let finaliza = fin.format("%Y-%m-%d").to_string();
     let changed = tx.execute("UPDATE clientes SET fecha_inicio_membresia=?1, fecha_fin_membresia=?2 WHERE id=?3 AND activo=1",
         params![inicio,finaliza,cliente_id]).map_err(|e| e.to_string())?;
     if changed == 0 { return Err("Cliente no encontrado o desactivado".into()); }
     tx.execute("INSERT INTO membresias_historial(cliente_id,fecha_inicio,fecha_fin,fecha_pago,tipo) VALUES(?1,?2,?3,datetime('now','localtime'),'renovacion')",
-        params![cliente_id,inicio,finaliza]).map_err(|e| e.to_string())?;
+        params![cliente_id,inicio_periodo.to_string(),finaliza]).map_err(|e| e.to_string())?;
     tx.execute("INSERT INTO pagos(cliente_id,membresia_id,concepto_membresia,membresia_centavos,inscripcion_centavos,total_centavos,tipo) VALUES(?1,?2,?3,?4,0,?4,'renovacion')",
         params![cliente_id,plan_id,nombre,precio]).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok("Membresía renovada".into())
+}
+
+fn periodo_renovacion(hoy: chrono::NaiveDate, inicio: &str, fin: &str, meses: i64)
+    -> Result<(chrono::NaiveDate,chrono::NaiveDate,chrono::NaiveDate),String> {
+    let inicio_guardado = if inicio.is_empty() { None } else {
+        Some(chrono::NaiveDate::parse_from_str(inicio,"%Y-%m-%d")
+            .map_err(|_| "Fecha de inicio almacenada inválida; revisa los datos antes de renovar")?)
+    };
+    let fin_guardado = if fin.is_empty() { None } else {
+        Some(chrono::NaiveDate::parse_from_str(fin,"%Y-%m-%d")
+            .map_err(|_| "Fecha de vencimiento almacenada inválida; revisa los datos antes de renovar")?)
+    };
+    let fin_pagado = fin_guardado.filter(|d| *d >= hoy);
+    let base = fin_pagado.unwrap_or(hoy);
+    let finaliza = base.checked_add_months(chrono::Months::new(meses as u32)).ok_or("Duración inválida")?;
+    let inicio_cliente = if fin_pagado.is_some() {
+        inicio_guardado.unwrap_or(hoy)
+    } else { hoy };
+    let inicio_periodo = if fin_pagado.is_some() { base.succ_opt().ok_or("Fecha fuera de rango")? } else { hoy };
+    Ok((inicio_cliente,inicio_periodo,finaliza))
 }
 
 /// Obtiene indicadores exclusivamente de datos persistidos; nunca valores simulados.
@@ -178,48 +230,5 @@ pub fn eliminar_cliente_definitivamente(conn: &mut Connection, id: i64) -> Resul
 }
 
 #[cfg(test)]
-mod pruebas {
-    use super::*;
-    fn db() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("PRAGMA foreign_keys=ON;
-          CREATE TABLE clientes (
-            id INTEGER PRIMARY KEY, nombre TEXT NOT NULL, telefono TEXT,
-            telefono_emergencia TEXT, fecha_inicio_membresia TEXT,
-            fecha_fin_membresia TEXT, activo INTEGER NOT NULL DEFAULT 1
-          );
-          CREATE TABLE asistencias (
-            id INTEGER PRIMARY KEY, cliente_id INTEGER NOT NULL,
-            fecha_hora TEXT NOT NULL, FOREIGN KEY(cliente_id) REFERENCES clientes(id)
-          );").unwrap();
-        conn
-    }
-    #[test]
-    fn membresia_futura_no_permite_acceso() {
-        let conn = db();
-        conn.execute("INSERT INTO clientes(id,nombre,fecha_inicio_membresia,fecha_fin_membresia) VALUES(1,'Test',date('now','localtime','+1 day'),date('now','localtime','+30 day'))", []).unwrap();
-        assert!(registrar_asistencia(&conn, 1).unwrap_err().contains("pendiente"));
-    }
-    #[test]
-    fn membresia_vigente_registra_solo_una_vez() {
-        let conn = db();
-        conn.execute("INSERT INTO clientes(id,nombre,fecha_inicio_membresia,fecha_fin_membresia) VALUES(1,'Test',date('now','localtime'),date('now','localtime','+30 day'))", []).unwrap();
-        assert!(registrar_asistencia(&conn, 1).is_ok());
-        assert!(registrar_asistencia(&conn, 1).unwrap_err().contains("Ya registró"));
-    }
-    #[test]
-    fn membresia_vencida_no_permite_acceso() {
-        let conn = db();
-        conn.execute("INSERT INTO clientes(id,nombre,fecha_inicio_membresia,fecha_fin_membresia) VALUES(1,'Test',date('now','localtime','-30 day'),date('now','localtime','-1 day'))", []).unwrap();
-        assert!(registrar_asistencia(&conn, 1).unwrap_err().contains("vencida"));
-    }
-    #[test]
-    fn edicion_rechaza_datos_invalidos() {
-        let conn = db();
-        let datos = ActualizacionCliente {
-            nombre: "Persona".into(), telefono: "abc".into(), telefono_emergencia: "".into(),
-            fecha_inicio_membresia: "2026-10-30".into(), fecha_fin_membresia: "2026-11-30".into(),
-        };
-        assert!(actualizar_cliente(&conn, 1, datos).is_err());
-    }
-}
+#[path = "tests/repositories.rs"]
+mod pruebas;

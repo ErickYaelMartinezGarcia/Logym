@@ -10,6 +10,13 @@ mod membresias;
 mod repositories;
 mod secugen;
 mod services;
+mod recuperacion;
+#[cfg(test)]
+#[path = "tests/test_support.rs"]
+mod test_support;
+#[cfg(test)]
+#[path = "tests/business.rs"]
+mod business_tests;
 
 use commands::{
     actualizar_cliente, establecer_cliente_activo, eliminar_cliente_definitivamente,
@@ -19,6 +26,17 @@ use commands::{
 };
 
 fn main() {
+    #[cfg(windows)]
+    let _instancia = match recuperacion::Instancia::adquirir() {
+        Ok(instancia) => instancia,
+        Err(error) => { eprintln!("{error}"); std::process::exit(1); }
+    };
+    #[cfg(windows)]
+    if std::env::args().nth(1).as_deref()==Some("--mantenimiento") {
+        let resultado = recuperacion::ejecutar();
+        match resultado { Ok(()) => println!("Mantenimiento verificado"), Err(error) => { eprintln!("{error}"); std::process::exit(1); } }
+        return;
+    }
     std::panic::set_hook(Box::new(|info| {
         eprintln!("PANIC REAL: {:?}", info);
         std::thread::sleep(std::time::Duration::from_secs(15));

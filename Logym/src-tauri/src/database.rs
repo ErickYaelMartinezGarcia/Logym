@@ -1,6 +1,11 @@
 use std::fs;
 use std::path::PathBuf;
 use rusqlite::Connection;
+static APERTURA: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
+#[path = "tests/database.rs"]
+mod pruebas_automatizadas;
 
 fn ruta_db(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let directorio_datos = app
@@ -38,7 +43,7 @@ fn dpapi(datos: &[u8], proteger: bool) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(windows)]
-fn clave_db(ruta: &std::path::Path) -> Result<String, String> {
+pub(crate) fn clave_db(ruta: &std::path::Path) -> Result<String, String> {
     let ruta_clave = ruta.with_extension("key.dpapi");
     let clave = if ruta_clave.exists() {
         let protegida = fs::read(&ruta_clave).map_err(|e| e.to_string())?;
@@ -51,7 +56,11 @@ fn clave_db(ruta: &std::path::Path) -> Result<String, String> {
         getrandom::getrandom(&mut nueva).map_err(|e| e.to_string())?;
         let protegida = dpapi(&nueva, true)?;
         let temporal = ruta_clave.with_extension("key.tmp");
-        fs::write(&temporal, protegida).map_err(|e| e.to_string())?;
+        use std::io::Write;
+        let mut archivo = fs::OpenOptions::new().write(true).create_new(true).open(&temporal)
+            .map_err(|e| format!("No se pudo reservar la clave temporal; no se modificó la base: {e}"))?;
+        archivo.write_all(&protegida).and_then(|_| archivo.sync_all()).map_err(|e| e.to_string())?;
+        drop(archivo);
         fs::rename(&temporal, &ruta_clave).map_err(|e| e.to_string())?;
         nueva
     };
@@ -59,13 +68,15 @@ fn clave_db(ruta: &std::path::Path) -> Result<String, String> {
 }
 
 #[cfg(windows)]
-fn abrir_cifrada(ruta: &std::path::Path) -> Result<Connection, String> {
+pub(crate) fn abrir_cifrada(ruta: &std::path::Path) -> Result<Connection, String> {
+    let _guard = APERTURA.lock().map_err(|_| "No se pudo serializar la apertura de la base")?;
     let ruta_clave = ruta.with_extension("key.dpapi");
     if ruta.exists() && !ruta_clave.exists() {
         return Err("Se detectó una base de datos anterior sin cifrar. No se modificó: se requiere migración segura antes de abrirla.".into());
     }
     let clave = clave_db(ruta)?;
     let conn = Connection::open(ruta).map_err(|e| e.to_string())?;
+    conn.busy_timeout(std::time::Duration::from_secs(10)).map_err(|e| e.to_string())?;
     conn.execute_batch(&format!("PRAGMA key = \"x'{clave}'\";")).map_err(|e| e.to_string())?;
     // Detecta una clave incorrecta antes de intentar migraciones o escrituras.
     conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))
@@ -86,6 +97,14 @@ pub fn abrir_db(app: &tauri::AppHandle) -> Result<Connection, String> {
     }
 }
 
+#[cfg(windows)]
+pub(crate) fn abrir_con_clave_para_mantenimiento(ruta: &std::path::Path, clave: &str) -> Result<Connection,String> {
+    let conn = Connection::open(ruta).map_err(|e|e.to_string())?;
+    conn.execute_batch(&format!("PRAGMA key=\"x'{clave}'\"; PRAGMA foreign_keys=ON;")).map_err(|e|e.to_string())?;
+    crate::recuperacion::comprobar(&conn)?;
+    Ok(conn)
+}
+
 fn asegurar_columna(conexion: &Connection, col: &str, def: &str) -> Result<(), String> {
     let mut stmt = conexion.prepare("PRAGMA table_info(clientes)").map_err(|e| e.to_string())?;
     let existe = stmt.query_map([], |r| r.get::<usize, String>(1)).map_err(|e| e.to_string())?
@@ -97,13 +116,41 @@ fn asegurar_columna(conexion: &Connection, col: &str, def: &str) -> Result<(), S
 }
 
 pub fn inicializar_esquema(conexion: &Connection) -> Result<(), String> {
+    let version: i64 = conexion.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(|e|e.to_string())?;
+    if version > 1 { return Err("La base pertenece a una versión más nueva de Logym; no se modificó".into()); }
+    // Conservar un snapshot cifrado previo a migrar instalaciones existentes.
+    #[cfg(windows)]
+    if version == 0 {
+        if let Some(ruta) = conexion.path().map(std::path::Path::new).filter(|p| p.with_extension("key.dpapi").is_file()) {
+            let tablas: i64 = conexion.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'", [], |r|r.get(0)).map_err(|e|e.to_string())?;
+            if tablas > 0 {
+                let copia = ruta.with_extension(format!("pre-migracion-{}.sqlcipher", crate::recuperacion::sufijo()?));
+                crate::recuperacion::exportar(conexion, &copia, &format!("x'{}'", clave_db(ruta)?))?;
+            }
+        }
+    }
+    let tx = conexion.unchecked_transaction().map_err(|e|e.to_string())?;
+    migrar_esquema(&tx)?;
+    if tx.prepare("PRAGMA foreign_key_check").map_err(|e|e.to_string())?.exists([]).map_err(|e|e.to_string())? {
+        return Err("Hay referencias huérfanas; la migración se revirtió sin borrar datos".into());
+    }
+    tx.execute_batch("PRAGMA user_version=1").map_err(|e|e.to_string())?;
+    tx.commit().map_err(|e|e.to_string())
+}
+
+fn migrar_esquema(conexion: &Connection) -> Result<(), String> {
     conexion.execute("CREATE TABLE IF NOT EXISTS clientes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL, telefono TEXT, telefono_emergencia TEXT, foto_base64 TEXT, template_huella TEXT, fecha_registro TEXT DEFAULT CURRENT_TIMESTAMP, fecha_inicio_membresia TEXT DEFAULT (date('now')), fecha_fin_membresia TEXT DEFAULT (date('now', '+30 day')))", []).map_err(|e| e.to_string())?;
-    asegurar_columna(conexion, "fecha_inicio_membresia", "TEXT DEFAULT (date('now'))")?;
-    asegurar_columna(conexion, "fecha_fin_membresia", "TEXT DEFAULT (date('now', '+30 day'))")?;
+    // No inventar vigencias históricas: NULL significa fecha no configurada.
+    asegurar_columna(conexion, "fecha_inicio_membresia", "TEXT")?;
+    asegurar_columna(conexion, "fecha_fin_membresia", "TEXT")?;
+    for columna in ["telefono", "foto_base64", "template_huella", "fecha_registro"] {
+        asegurar_columna(conexion, columna, "TEXT")?;
+    }
     asegurar_columna(conexion, "telefono_emergencia", "TEXT")?;
     // Migración no destructiva: todos los clientes existentes permanecen activos.
     asegurar_columna(conexion, "activo", "INTEGER NOT NULL DEFAULT 1")?;
     conexion.execute("CREATE TABLE IF NOT EXISTS asistencias (id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_id INTEGER NOT NULL, fecha_hora TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE)", []).map_err(|e| e.to_string())?;
+    migrar_asistencias(conexion)?;
     conexion.execute("CREATE INDEX IF NOT EXISTS idx_asistencias_cliente_fecha ON asistencias(cliente_id, fecha_hora)", []).map_err(|e| e.to_string())?;
     conexion.execute("CREATE TABLE IF NOT EXISTS membresias_historial (id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_id INTEGER NOT NULL, fecha_inicio TEXT NOT NULL, fecha_fin TEXT NOT NULL, fecha_pago TEXT NOT NULL, tipo TEXT DEFAULT 'renovacion', observaciones TEXT, creado_en TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE)", []).map_err(|e| e.to_string())?;
     // Precios en centavos: nunca recalcular pagos históricos desde el catálogo.
@@ -162,30 +209,43 @@ pub fn inicializar_esquema(conexion: &Connection) -> Result<(), String> {
     "#).map_err(|e| e.to_string())?;
     Ok(())
 }
-#[cfg(test)]
-mod pruebas_migracion {
-    use super::*;
-    #[test]
-    fn migracion_conserva_clientes_y_asistencias() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("
-            CREATE TABLE clientes(id INTEGER PRIMARY KEY,nombre TEXT,telefono TEXT,fecha_registro TEXT,fecha_inicio_membresia TEXT,fecha_fin_membresia TEXT);
-            CREATE TABLE asistencias(id INTEGER PRIMARY KEY,cliente_id INTEGER,fecha_hora TEXT);
-            INSERT INTO clientes(id,nombre) VALUES(7,'Cliente antiguo');
-            INSERT INTO asistencias(id,cliente_id) VALUES(9,7);
-        ").unwrap();
-        inicializar_esquema(&conn).unwrap();
-        inicializar_esquema(&conn).unwrap();
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM clientes WHERE id=7",[],|r|r.get::<_,i64>(0)).unwrap(),1);
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM asistencias WHERE id=9",[],|r|r.get::<_,i64>(0)).unwrap(),1);
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM tipos_membresia",[],|r|r.get::<_,i64>(0)).unwrap(),5);
+
+fn migrar_asistencias(conn: &Connection) -> Result<(), String> {
+    let tiene_fk = conn.prepare("PRAGMA foreign_key_list(asistencias)").map_err(|e|e.to_string())?
+        .query_map([], |r| Ok((r.get::<_,String>(2)?,r.get::<_,String>(3)?,r.get::<_,String>(6)?)))
+        .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?
+        .iter().any(|(tabla,columna,borrado)| tabla=="clientes" && columna=="cliente_id" && borrado=="CASCADE");
+    if tiene_fk { return Ok(()); }
+    let columnas = conn.prepare("PRAGMA table_info(asistencias)").map_err(|e|e.to_string())?
+        .query_map([],|r|r.get::<_,String>(1)).map_err(|e|e.to_string())?
+        .collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+    if columnas != ["id", "cliente_id", "fecha_hora"] {
+        return Err("Esquema legacy de asistencias no soportado; se conserva intacto para migración asistida".into());
     }
-    #[test]
-    fn inscripcion_gratis_no_se_restaurara_al_reiniciar() {
-        let conn = Connection::open_in_memory().unwrap();
-        inicializar_esquema(&conn).unwrap();
-        conn.execute("UPDATE configuracion_cobros SET inscripcion_centavos=0",[]).unwrap();
-        inicializar_esquema(&conn).unwrap();
-        assert_eq!(conn.query_row("SELECT inscripcion_centavos FROM configuracion_cobros WHERE id=1",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+    let huerfanos: i64 = conn.query_row("SELECT count(*) FROM asistencias a LEFT JOIN clientes c ON c.id=a.cliente_id WHERE c.id IS NULL",[],|r|r.get(0)).map_err(|e|e.to_string())?;
+    if huerfanos != 0 { return Err("Asistencias legacy huérfanas; se conserva todo sin eliminar registros".into()); }
+    let tablas = conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name<>'asistencias'").map_err(|e|e.to_string())?
+        .query_map([],|r|r.get::<_,String>(0)).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+    for tabla in tablas {
+        let quoted = tabla.replace('"',"\"\"");
+        let referencias = conn.prepare(&format!("PRAGMA foreign_key_list(\"{quoted}\")")).map_err(|e|e.to_string())?
+            .query_map([],|r|r.get::<_,String>(2)).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+        if referencias.iter().any(|t|t=="asistencias") { return Err("Una tabla legacy depende de asistencias; se requiere migración asistida".into()); }
     }
+    let vistas: i64 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE type='view' AND lower(sql) LIKE '%asistencias%'",[],|r|r.get(0)).map_err(|e|e.to_string())?;
+    if vistas>0 { return Err("Una vista legacy depende de asistencias; se requiere migración asistida".into()); }
+    let sql: String = conn.query_row("SELECT sql FROM sqlite_master WHERE name='asistencias' AND type='table'",[],|r|r.get(0)).map_err(|e|e.to_string())?;
+    if ["CHECK", "UNIQUE", "REFERENCES"].iter().any(|s|sql.to_ascii_uppercase().contains(s)) {
+        return Err("Restricciones legacy de asistencias requieren migración asistida; no se modificaron".into());
+    }
+    let objetos = conn.prepare("SELECT sql FROM sqlite_master WHERE tbl_name='asistencias' AND type IN ('index','trigger') AND sql IS NOT NULL").map_err(|e|e.to_string())?
+        .query_map([],|r|r.get::<_,String>(0)).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+    conn.execute_batch("CREATE TABLE asistencias_migracion (id INTEGER PRIMARY KEY AUTOINCREMENT,cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,fecha_hora TEXT DEFAULT CURRENT_TIMESTAMP);
+        INSERT INTO asistencias_migracion(id,cliente_id,fecha_hora) SELECT id,cliente_id,fecha_hora FROM asistencias;
+        DROP TABLE asistencias; ALTER TABLE asistencias_migracion RENAME TO asistencias;").map_err(|e|e.to_string())?;
+    for objeto in objetos { conn.execute_batch(&objeto).map_err(|e|e.to_string())?; }
+    Ok(())
 }
+#[cfg(test)]
+#[path = "tests/database_migrations.rs"]
+mod pruebas_migracion;

@@ -1,5 +1,9 @@
 # Análisis de respaldos SQLite (sin implementación)
 
+Documento histórico, superado por la implementación y los procedimientos de
+[ENTREGA_PRODUCCION.md](ENTREGA_PRODUCCION.md). Ya existen respaldo cifrado,
+restauración e importación legacy en modo mantenimiento, con pruebas sintéticas.
+
 ## Estado actual
 
 - La base de datos `gym.db` se almacena en el directorio de datos de la aplicación de Tauri.

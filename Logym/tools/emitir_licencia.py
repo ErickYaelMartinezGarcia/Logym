@@ -11,9 +11,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("accion", choices=["crear-claves", "firmar"])
     parser.add_argument("--solicitud", help="Código LOGYM1-... mostrado por la app")
-    parser.add_argument("--privada", default="logym-issuer-private.key")
+    parser.add_argument("--privada", required=True, help="Ruta absoluta fuera del repositorio")
     args = parser.parse_args()
-    privada = pathlib.Path(args.privada)
+    privada = pathlib.Path(args.privada).resolve()
+    proyecto = pathlib.Path(__file__).resolve().parents[2]
+    if not pathlib.Path(args.privada).is_absolute() or privada == proyecto or proyecto in privada.parents:
+        raise SystemExit("La clave privada debe estar fuera del proyecto, en una ruta absoluta.")
     if args.accion == "crear-claves":
         if privada.exists():
             raise SystemExit("Ya existe una clave privada. No se sobrescribe.")
