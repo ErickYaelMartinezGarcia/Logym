@@ -25,6 +25,15 @@ fn decode(s: &str) -> Result<Vec<u8>, String> {
 
 pub fn solicitud(_: &tauri::AppHandle) -> Result<String, String> { hardware::solicitud() }
 
+/// Diagnóstico de solo lectura, también útil para verificar tras un nuevo proceso.
+#[cfg(windows)]
+pub fn diagnostico(archivo: Option<&std::path::Path>) -> serde_json::Value {
+    let solicitud=hardware::solicitud();
+    let verificacion=archivo.map(|p|fs::read_to_string(p).map_err(|_|"No se pudo leer la licencia".to_string())
+        .and_then(|texto|solicitud.as_ref().map_err(Clone::clone).and_then(|id|validar_firma(id,&texto))));
+    serde_json::json!({"hardware":hardware::diagnostico(),"solicitud":solicitud,"verificacion":verificacion})
+}
+
 pub fn verificar(app: &tauri::AppHandle) -> Result<(), String> {
     // Solo builds de desarrollo pueden operar sin licencia.
     #[cfg(debug_assertions)]

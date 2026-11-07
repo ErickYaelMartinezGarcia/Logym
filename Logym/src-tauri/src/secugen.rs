@@ -345,12 +345,17 @@ impl SecuGenController {
         if captured.len() != SG_TEMPLATE_SIZE {
             return Err("Plantilla capturada inválida: se requieren 400 bytes".into());
         }
+        // Nunca consultar SQLite bajo GLOBAL_MANAGER: el alta mantiene el orden
+        // SQLite -> SDK. Materializar y cerrar el lector antes de tomar el SDK.
+        let lista: Vec<(i64, String)> = {
+            let mut stmt = conexion.prepare("SELECT id, template_huella FROM clientes WHERE activo = 1 AND COALESCE(template_huella, '') <> ''").map_err(|e| e.to_string())?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?;
+            rows.collect::<Result<Vec<_>,_>>().map_err(|e| e.to_string())?
+        };
         let api = get_api(&self.bin_path)?;
         let guard = GLOBAL_MANAGER.lock().map_err(|e| e.to_string())?;
         let manager = guard.as_ref().ok_or(SecuGenError::Disconnected)?.connected_handle()?;
         unsafe {
-            let mut stmt = conexion.prepare("SELECT id, template_huella FROM clientes WHERE activo = 1 AND COALESCE(template_huella, '') <> ''").map_err(|e| e.to_string())?;
-            let lista: Vec<(i64, String)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
             for (id, hex) in lista {
                 let mut stored = match hex_decode(&hex) { Ok(v) => v, Err(_) => continue };
                 if stored.len() != SG_TEMPLATE_SIZE { continue; }

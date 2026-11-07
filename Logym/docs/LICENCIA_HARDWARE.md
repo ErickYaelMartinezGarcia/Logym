@@ -6,15 +6,25 @@ Ed25519 firma la solicitud completa. La clave pública de producción no cambia.
 La clave privada sigue exclusivamente fuera del proyecto; nunca se distribuye
 con la aplicación, la base, las pruebas ni el instalador.
 
-Windows obtiene SMBIOS mediante `GetSystemFirmwareTable('RSMB')`, sin WMI,
-PowerShell, Internet, privilegios administrativos ni servicios de terceros.
-Se exige SMBIOS >= 2.6, una estructura System Information (tipo 1) y una sola
-Baseboard Information (tipo 2) identificada como motherboard (tipo 10).
+La vía principal obtiene SMBIOS mediante `GetSystemFirmwareTable('RSMB')`.
+Se exige UUID completo y placa identificable; Type 2 admite la longitud mínima
+de ocho bytes y no exige BoardType=10 cuando la única placa OEM no lo informa.
+Si hay varias, se exige una única placa principal (HostingBoard/BoardType).
+Si falla la vía directa, Windows CIM obtiene automáticamente
+Win32_ComputerSystemProduct.UUID y Win32_BaseBoard. No hay formulario manual.
+En SMBIOS anterior a 2.6 se usa CIM para no adivinar el orden UUID antiguo.
+Ambas vías usan la MISMA serialización canónica anterior, sin cambiar LOGYM2-HW.
 El UUID se convierte del orden SMBIOS little-endian a su orden canónico.
 Las cadenas ASCII se recortan, se reducen espacios y se convierten a mayúsculas.
 No se usan versión de BIOS, SSD, volumen, MAC, usuario, MachineGuid ni DPAPI.
-Dos lecturas consecutivas deben producir la misma identidad. No se guarda una
-identidad en caché que permita aceptar otro equipo o disimular errores de lectura.
+Dos lecturas consecutivas de la vía elegida deben producir la misma identidad.
+Una lectura SMBIOS inconsistente no se oculta con un fallback. No se guarda una
+identidad en disco ni se acepta una identidad en caché cuando fallan las lecturas.
+Cada comprobación vuelve a obtener los datos de Windows. Los errores no se ocultan.
+La consulta CIM usa PowerShell de System32, sin perfil ni ventana, con script
+constante (sin interpolar entradas), salida limitada y timeout de diez segundos.
+Requiere el proveedor CIM local y Windows PowerShell de Windows 10/11; no requiere
+Internet ni elevación. Si ambas vías fallan, se rechaza la activación.
 
 UUID vacío, uniforme o con patrones genéricos conocidos, serial vacío, genérico,
 insuficiente, tablas truncadas, índices incorrectos y estructuras ambiguas
@@ -83,8 +93,8 @@ existente. Conservar solo gym.db y su archivo DPAPI antiguo no es suficiente.
 - Cambio de placa, reparación OEM, reprovisionamiento o actualización de firmware
   que altere esos campos exige reemisión. Dos lecturas estables no garantizan
   que un firmware futuro conservará los valores.
-- Equipos con SMBIOS anterior a 2.6, múltiples placas, serial genérico/ausente,
-  caracteres no ASCII o motherboard sin tipo válido quedan bloqueados. Corregir
+- Equipos sin una placa inequívoca, serial genérico/ausente o caracteres no ASCII
+  quedan bloqueados si tampoco CIM puede proporcionar datos válidos. Corregir
   el aprovisionamiento con el fabricante; no usar un código común como remedio.
 - El bypass de desarrollo preexistente sigue limitado a debug. La aceptación
   comercial debe hacerse sobre release; no distribuir builds de desarrollo.
@@ -100,3 +110,15 @@ firma pública; no contiene claves privadas.
 
 Fuentes: [API de firmware Windows](https://learn.microsoft.com/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemfirmwaretable),
 [especificación SMBIOS DMTF DSP0134](https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_3.8.0.pdf).
+
+Diagnóstico de solo lectura desde el release (no abre SQLCipher):
+
+```powershell
+& 'C:\ruta\VIRTUS GYM.exe' --diagnostico-licencia
+& 'C:\ruta\VIRTUS GYM.exe' --diagnostico-licencia 'C:\ruta\license.txt'
+```
+
+Devuelve códigos hash/resultados de ambas vías y, opcionalmente, verifica una
+licencia con la identidad leída en ese nuevo proceso. No admite identificadores
+introducidos por el usuario ni escribe activaciones. En diagnóstico conviene
+redirigir stdout o invocarlo desde un proceso con stdout capturado.

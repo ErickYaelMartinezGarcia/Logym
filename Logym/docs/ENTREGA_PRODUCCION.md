@@ -1,5 +1,10 @@
 # Entrega de producción: estado y operación
 
+La revisión SMBIOS/CIM, concurrencia y restauración completa se documenta en
+[CIERRE_BLOQUEANTES.md](CIERRE_BLOQUEANTES.md). Sus comprobaciones y el manifiesto
+del instalador actual están en `.artifacts/cierre/`; las cifras y hashes de
+entregas anteriores que aparecen abajo son históricos.
+
 Esta entrega NO certifica instalación limpia ni funcionamiento físico del lector.
 Las comprobaciones del equipo destino listadas al final son obligatorias antes
 de poner el gimnasio en operación. No se usaron datos reales en las pruebas.

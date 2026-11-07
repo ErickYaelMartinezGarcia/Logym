@@ -349,3 +349,42 @@ const SG_DEV_FDU05: u32 = 0x06; // sgfplib.h: HU20 / Hamster Pro 20
             assert!(!SecuGenError::Sdk { function: "SGFPM_GetImageEx", code }.persistent_fault());
         }
     }
+
+#[test]
+fn sqlite_bloqueado_no_retiene_sdk_y_no_invierte_orden() {
+    use std::sync::{Arc,atomic::{AtomicBool,Ordering},mpsc};use std::time::{Duration,Instant};
+    static BLOQUEADO:AtomicBool=AtomicBool::new(false);
+    fn ocupado(n:i32)->bool {BLOQUEADO.store(true,Ordering::SeqCst);std::thread::sleep(Duration::from_millis(5));n<200}
+    let _serial=TEST_SERIAL.lock().unwrap();let sdk=SimulatedSdk::install();let reader=Arc::new(sdk.controller());
+    let temp=crate::test_support::TempDb::new();let db=Connection::open(&temp.path).unwrap();crate::database::inicializar_esquema(&db).unwrap();
+    let id=crate::test_support::vigente(&db);db.execute_batch("PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE;").unwrap();BLOQUEADO.store(false,Ordering::SeqCst);
+    let path=temp.path.clone();let r=reader.clone();let identify=std::thread::spawn(move||{let db=Connection::open(path).unwrap();db.busy_handler(Some(ocupado)).unwrap();r.identificar_template(&db,&"ab".repeat(400))});
+    let start=Instant::now();while !BLOQUEADO.load(Ordering::SeqCst)&&start.elapsed()<Duration::from_secs(2){std::thread::sleep(Duration::from_millis(2));}
+    let observed=BLOQUEADO.load(Ordering::SeqCst);let(rtx,rrx)=mpsc::channel();let r=reader.clone();let compare=std::thread::spawn(move||{rtx.send(r.comparar_templates(&"ab".repeat(400),&"ab".repeat(400))).unwrap();});
+    let available=rrx.recv_timeout(Duration::from_millis(500));db.execute_batch("COMMIT").unwrap();let found=identify.join().unwrap();compare.join().unwrap();
+    assert!(observed,"No se provoco la espera SQLite");assert!(available.unwrap().unwrap(),"El SDK quedo retenido esperando SQLite");assert_eq!(found.unwrap(),Some(id));
+}
+
+#[test]
+fn altas_y_checkins_simultaneos_con_sdk_real_simulado_sin_cobros_duplicados() {
+    use std::sync::{Arc,Barrier,mpsc};use std::time::Duration;
+    let _serial=TEST_SERIAL.lock().unwrap();let sdk=SimulatedSdk::install();let reader=Arc::new(sdk.controller());
+    let temp=crate::test_support::TempDb::new();let db=temp.connect();crate::database::inicializar_esquema(&db).unwrap();let id=crate::test_support::vigente(&db);let plan=crate::test_support::plan(&db,"Mensual");drop(db);
+    let barrier=Arc::new(Barrier::new(8));let(tx,rx)=mpsc::channel();let mut threads=Vec::new();
+    for i in 0..8 {let path=temp.path.clone();let r=reader.clone();let b=barrier.clone();let tx=tx.clone();threads.push(std::thread::spawn(move||{
+        let db=Connection::open(path).unwrap();db.busy_timeout(Duration::from_secs(3)).unwrap();b.wait();
+        let result=if i<4 {let mut datos=crate::test_support::cliente(plan);datos.template_huella="cd".repeat(400);crate::repositories::guardar_cliente_sin_duplicar(&db,datos,|a,b|r.comparar_templates(a,b)).map(|_|"alta".to_string())}
+            else {r.identificar_template(&db,&"ab".repeat(400)).map_err(String::from).and_then(|found|{assert_eq!(found,Some(id));crate::repositories::registrar_asistencia(&db,id)})};
+        tx.send((i,result)).unwrap();}));}
+    drop(tx);let mut altas=0;let mut asistencias=0;for _ in 0..8 {let(i,result)=rx.recv_timeout(Duration::from_secs(10)).expect("Timeout: posible deadlock");if i<4 {match result {Ok(_)=>altas+=1,Err(e)=>assert!(e.contains("ya pertenece"),"{e}")}}else {match result {Ok(_)=>asistencias+=1,Err(e)=>assert!(e.contains("Ya registr"),"{e}")}}}
+    for t in threads{t.join().unwrap();}assert_eq!(altas,1);assert_eq!(asistencias,1);assert_eq!(crate::test_support::counts(&temp.connect()),(2,2,2,1));
+}
+
+#[test]
+fn alta_corrupta_sdk_error_y_duplicado_no_dejan_registros_parciales() {
+    let _serial=TEST_SERIAL.lock().unwrap();let sdk=SimulatedSdk::install();let reader=sdk.controller();let db=crate::test_support::db();let plan=crate::test_support::plan(&db,"Mensual");
+    let id=crate::repositories::guardar_cliente_sin_duplicar(&db,crate::test_support::cliente(plan),|a,b|reader.comparar_templates(a,b)).unwrap();
+    for activo in [1,0] {db.execute("UPDATE clientes SET activo=?1 WHERE id=?2",rusqlite::params![activo,id]).unwrap();let before=crate::test_support::counts(&db);assert!(crate::repositories::guardar_cliente_sin_duplicar(&db,crate::test_support::cliente(plan),|a,b|reader.comparar_templates(a,b)).unwrap_err().contains("ya pertenece"));assert_eq!(crate::test_support::counts(&db),before);}
+    FAKE.lock().unwrap().match_error=106;let before=crate::test_support::counts(&db);assert!(crate::repositories::guardar_cliente_sin_duplicar(&db,crate::test_support::cliente(plan),|a,b|reader.comparar_templates(a,b)).is_err());assert_eq!(crate::test_support::counts(&db),before);
+    FAKE.lock().unwrap().match_error=0;db.execute("UPDATE clientes SET template_huella='corrupta' WHERE id=?1",[id]).unwrap();assert!(crate::repositories::guardar_cliente_sin_duplicar(&db,crate::test_support::cliente(plan),|a,b|reader.comparar_templates(a,b)).unwrap_err().contains("dañada"));assert_eq!(crate::test_support::counts(&db),before);
+}

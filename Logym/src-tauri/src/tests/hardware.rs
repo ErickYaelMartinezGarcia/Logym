@@ -87,3 +87,54 @@ fn lectura_inconsistente_o_fallida_no_usa_cache_ni_fallback() {
     assert!(solicitud_con(|| Err("SMBIOS inaccesible".into())).is_err());
     assert!(solicitud_con(|| Ok(Vec::new())).is_err());
 }
+
+fn cim_fixture() -> Vec<u8> {
+    let lectura=serde_json::json!({"sistemas":[{"uuid":"6D235B81-A24C-4712-8965-21EA73983C50"}],"placas":[{"fabricante":"  synthetic   vendor ","modelo":"Synthetic Board X2","serie":"synth-board-4829","principal":true}]});
+    serde_json::to_vec(&vec![lectura.clone(),lectura]).unwrap()
+}
+
+#[test]
+fn identidad_canonica_anterior_y_equivalencia_cim_smbios_se_conservan() {
+    let golden="LOGYM2-HW-85c34de2a54996603128c8467d4cf69b5cf73b76b892f09414934233c983790f";
+    assert_eq!(solicitud_simulada("SSD","Windows"),golden);
+    assert_eq!(interpretar_cim(&cim_fixture()).unwrap(),golden);
+    super::super::validar_firma(golden,licencia()).unwrap();
+    assert_eq!(resolver(||Ok(golden.into()),||panic!("CIM no debe sustituir un SMBIOS valido")).unwrap(),golden);
+}
+
+#[test]
+fn placa_oem_corta_o_tipo_no_especificado_no_cambia_identidad() {
+    let base=tabla("SSD","Windows");let board=8+27;
+    for length in [8,9,10,14,15] {
+        let mut raw=base.clone();raw[board+13]=1;
+        raw.drain(board+length..board+15);raw[board+1]=length as u8;
+        let tam=(raw.len()-8) as u32;raw[4..8].copy_from_slice(&tam.to_le_bytes());
+        assert_eq!(identidad(interpretar(&raw).unwrap()).unwrap(),identidad(equipo()).unwrap());
+    }
+}
+
+#[test]
+fn cim_rechaza_genericos_ambiguedad_y_lecturas_inconsistentes() {
+    let original:serde_json::Value=serde_json::from_slice(&cim_fixture()).unwrap();
+    for (field,value) in [("uuid","00000000-0000-0000-0000-000000000000"),("uuid","zz235b81-a24c-4712-8965-21ea73983c50"),("uuid","{6d235b81-a24c-4712-8965-21ea73983c50}"),("serie","To be filled by O.E.M."),("serie","")] {
+        let mut data=original.clone();for i in 0..2 { if field=="uuid" {data[i]["sistemas"][0][field]=value.into()} else {data[i]["placas"][0][field]=value.into()} }assert!(interpretar_cim(&serde_json::to_vec(&data).unwrap()).is_err());
+    }
+    let mut data=original.clone();data[1]["placas"][0]["serie"]="OTHER-SYNTHETIC".into();assert!(interpretar_cim(&serde_json::to_vec(&data).unwrap()).is_err());
+    let mut data=original.clone();data[0]["sistemas"]=serde_json::json!([]);assert!(interpretar_cim(&serde_json::to_vec(&data).unwrap()).is_err());
+    let mut data=original.clone();let board=data[0]["placas"][0].clone();data[0]["placas"].as_array_mut().unwrap().push(board);assert!(interpretar_cim(&serde_json::to_vec(&data).unwrap()).is_err());
+    assert!(resolver(||Err("Identificadores inconsistentes".into()),||panic!("No ocultar incoherencia")).is_err());
+    assert!(resolver(||Err("SMBIOS".into()),||Err("CIM".into())).is_err());
+}
+
+#[test]
+fn activar_por_cim_y_verificar_tras_reinicio_o_cambio_de_metodo() {
+    let dir=crate::test_support::TempDb::new();let file=dir.dir.join("license.txt");
+    let primera=resolver(||Err("SMBIOS OEM incompatible".into()),||interpretar_cim(&cim_fixture())).unwrap();
+    super::super::activar_archivo(&file,&primera,licencia()).unwrap();
+    // Estado nuevo: no se reutiliza la solicitud ni un archivo de identidad.
+    let siguiente=resolver(||Err("SMBIOS OEM incompatible".into()),||interpretar_cim(&cim_fixture())).unwrap();
+    super::super::validar_firma(&siguiente,&std::fs::read_to_string(&file).unwrap()).unwrap();
+    super::super::validar_firma(&solicitud_simulada("SSD nuevo","Windows nuevo"),&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let mut otra:serde_json::Value=serde_json::from_slice(&cim_fixture()).unwrap();for i in 0..2 {otra[i]["sistemas"][0]["uuid"]="6D235B81-A24C-4712-8965-21EA73983C51".into();}
+    assert!(super::super::validar_firma(&interpretar_cim(&serde_json::to_vec(&otra).unwrap()).unwrap(),licencia()).is_err());
+}

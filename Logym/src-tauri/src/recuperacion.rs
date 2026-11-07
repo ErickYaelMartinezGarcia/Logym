@@ -14,6 +14,9 @@ pub(crate) fn comprobar(conn: &Connection) -> Result<(),String> {
     if conn.prepare("PRAGMA cipher_integrity_check").map_err(|e|e.to_string())?.exists([]).map_err(|e|e.to_string())? {
         return Err("La base no supera cipher_integrity_check".into());
     }
+    if conn.prepare("PRAGMA foreign_key_check").map_err(|e|e.to_string())?.exists([]).map_err(|e|e.to_string())? {
+        return Err("La base contiene referencias huérfanas; no se modificó el destino".into());
+    }
     Ok(())
 }
 

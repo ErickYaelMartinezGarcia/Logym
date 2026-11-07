@@ -27,6 +27,12 @@ use commands::{
 
 fn main() {
     #[cfg(windows)]
+    if std::env::args().nth(1).as_deref()==Some("--diagnostico-licencia") {
+        let archivo=std::env::args_os().nth(2).map(std::path::PathBuf::from);
+        println!("{}",licencia::diagnostico(archivo.as_deref()));
+        return;
+    }
+    #[cfg(windows)]
     let _instancia = match recuperacion::Instancia::adquirir() {
         Ok(instancia) => instancia,
         Err(error) => { eprintln!("{error}"); std::process::exit(1); }
