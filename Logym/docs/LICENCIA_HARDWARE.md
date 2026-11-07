@@ -22,6 +22,27 @@ producen un error visible. No hay fallback aleatorio ni identidad universal.
 No se registran UUID/serial en logs ni se envían a un servidor. La solicitud es
 un identificador persistente: tratarla como información del equipo.
 
+## Pantalla de activación
+
+Al arrancar, la interfaz consulta la licencia antes de montar las pantallas del
+sistema. Sin licencia válida muestra automáticamente el código de hardware,
+Copiar código, el campo Licencia firmada y Activar licencia. Un rechazo de firma
+o de computadora se muestra en esa pantalla y no abre las vistas de datos.
+Tras activar se verifica nuevamente la licencia y se entra sin reiniciar.
+Con licencia válida se inicia directamente. En Información del sistema, el punto
+verde junto al nombre abre la consulta de licencia, sin un botón público en el
+menú. Es un acceso discreto, no autenticación exclusiva de desarrollador.
+La consulta permite ver el estado y copiar el código; Volver al sistema
+cierra esa consulta sin volver a montar las vistas. Si WebView no permite el
+portapapeles moderno, se intenta copiar la selección y se informa cómo hacerlo
+manualmente si también falla.
+
+Siete pruebas nuevas montan los componentes Vue de producción con un renderer
+de pruebas y fronteras IPC simuladas: arranque bloqueado sin llamadas de datos,
+activación sin reinicio, licencia inválida/ajena, arranque ya activado y consulta,
+errores IPC/SMBIOS, copia y fallback. La aceptación visual final del instalador
+sobre WebView2 y hardware del gimnasio sigue siendo una prueba física.
+
 ## Activar y actualizar
 
 Enviar al emisor el código nuevo mostrado en Activación. En la PC emisora:

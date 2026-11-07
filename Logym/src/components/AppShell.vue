@@ -1,11 +1,12 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
 import { useRoute } from 'vue-router'
 import espartano from '../assets/espartano_laurel.svg'
 
 const route = useRoute()
 const menuAbierto = ref(false)
 const infoAbierta = ref(false)
+const consultarLicencia = inject('consultarLicencia')
 const version = '0.1.0'
 
 const enlaces = [
@@ -15,6 +16,12 @@ const enlaces = [
   { to: '/clientes', label: 'Administrar clientes', caption: 'Editar y controlar accesos', icon: 'users' },
   { to: '/precios', label: 'Precios y planes', caption: 'Acceso administrativo', icon: 'grid' }
 ]
+
+function abrirLicencia() {
+  infoAbierta.value = false
+  cerrarMenu()
+  consultarLicencia()
+}
 
 function cerrarMenu() {
   menuAbierto.value = false
@@ -82,7 +89,7 @@ function cerrarMenu() {
           <dt style="color:#aab5c2">Versión</dt><dd>{{ version }}</dd>
           <dt style="color:#aab5c2">Creador</dt><dd>Erick Yael Martinez Garcia</dd>
           <dt style="color:#aab5c2">Soporte</dt><dd>Correo de soporte: pendiente de configurar</dd>
-          <dt style="color:#aab5c2">Nombre</dt><dd><strong>Virtus Gym Sistem</strong></dd>
+          <dt style="color:#aab5c2">Nombre</dt><dd><strong>Virtus Gym Sistem</strong><span class="status-dot" style="display:inline-block;margin-left:10px;cursor:pointer" role="button" tabindex="0" aria-label="Consultar licencia" @click="abrirLicencia" @keydown.enter="abrirLicencia" @keydown.space.prevent="abrirLicencia"></span></dd>
         </dl>
       </section>
     </div>

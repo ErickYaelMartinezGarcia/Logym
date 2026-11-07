@@ -10,7 +10,7 @@ const defects = process.argv.includes('--defects')
 const commands = [
   { name: 'cargo-check', bin: 'cargo', args: ['check', '--locked'], cwd: path.join(root, 'src-tauri') },
   { name: 'rust', bin: 'cargo', args: ['test', '--locked'], cwd: path.join(root, 'src-tauri') },
-  { name: 'frontend', bin: process.execPath, args: ['--experimental-vm-modules', '--experimental-test-coverage', '--test-coverage-include=src/**', '--test', 'tests/frontend.test.mjs'], cwd: root },
+  { name: 'frontend', bin: process.execPath, args: ['--experimental-vm-modules', '--experimental-test-coverage', '--test-coverage-include=src/**', '--test', 'tests/frontend.test.mjs', 'tests/activation.test.mjs'], cwd: root },
 ]
 if (defects) commands.push({ name: 'known-defects', bin: 'cargo', args: ['test', '--locked', 'defecto_', '--', '--nocapture'], cwd: path.join(root, 'src-tauri') })
 const results = []

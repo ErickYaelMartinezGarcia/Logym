@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node scripts/run-tests.mjs",
-    "test:frontend": "node --experimental-vm-modules --test tests/frontend.test.mjs",
+    "test:frontend": "node --experimental-vm-modules --test tests/frontend.test.mjs tests/activation.test.mjs",
     "test:defects": "node scripts/run-tests.mjs --defects",
     "dev": "vite",
     "build": "vite build",

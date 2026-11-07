@@ -1,10 +1,32 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, provide } from 'vue'
 import { invoke } from '@tauri-apps/api/tauri'
 import { listen } from '@tauri-apps/api/event'
 
+import ActivacionLicencia from './components/ActivacionLicencia.vue'
 import ToastNotifications from './components/ToastNotifications.vue'
 import { mostrarToast } from './services/toast'
+const licenciaValida = ref(false)
+const comprobandoLicencia = ref(true)
+const consultandoLicencia = ref(false)
+const errorLicencia = ref('')
+let monitoresIniciados = false
+provide('consultarLicencia', () => { consultandoLicencia.value = true })
+
+async function revisarLicencia() {
+  comprobandoLicencia.value = true
+  errorLicencia.value = ''
+  try { licenciaValida.value = await invoke('estado_licencia') === true }
+  catch (error) {
+    licenciaValida.value = false
+    errorLicencia.value = 'No se pudo verificar la licencia. ' + String(error)
+  } finally { comprobandoLicencia.value = false }
+  if (licenciaValida.value && !monitoresIniciados && !desmontado) {
+    monitoresIniciados = true
+    await iniciarEventosLector()
+  }
+}
+
 let desuscribir = null
 let desuscribirLector = null
 let desuscribirEstadoLector = null
@@ -57,7 +79,7 @@ function presentarResultado(resultado) {
   return { titulo: 'No se registró la asistencia', detalle, tipo: 'error', simbolo: '×' }
 }
 
-onMounted(async () => {
+async function iniciarEventosLector() {
   try {
     desuscribirEstadoLector = await listen('logym://lector-estado', ({ payload }) => actualizarLector(payload))
   } catch (error) { console.error('Eventos del lector:', error) }
@@ -76,7 +98,8 @@ onMounted(async () => {
     if (!cliente) return
     mostrarToast({ nombre: cliente.nombre, ...presentarResultado(resultado), duracion: 7500 })
   })
-})
+}
+onMounted(revisarLicencia)
 onBeforeUnmount(() => {
   desmontado = true
   clearInterval(consultarLectorTimer)
@@ -88,13 +111,17 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="min-h-screen bg-[#090a0c] text-white">
-    <router-view />
-    <div v-if="falloConsultaLector || lector.estado !== 'disponible'" role="status" aria-live="polite" :title="lector.detalle"
+    <p v-if="comprobandoLicencia" role="status" class="p-8">Verificando licencia...</p>
+    <ActivacionLicencia v-else-if="!licenciaValida || consultandoLicencia"
+      :activa="licenciaValida" :error-inicial="errorLicencia"
+      @activada="revisarLicencia" @cerrar="consultandoLicencia = false" />
+    <div v-if="licenciaValida" v-show="!consultandoLicencia && !comprobandoLicencia"><router-view /></div>
+    <div v-if="licenciaValida && !consultandoLicencia && (falloConsultaLector || lector.estado !== 'disponible')" role="status" aria-live="polite" :title="lector.detalle"
       class="fixed bottom-3 left-3 z-[100] flex items-center gap-2 rounded-lg border border-amber-400/20 bg-[#151515] px-3 py-2 text-xs text-amber-200 shadow-md">
       <span aria-hidden="true" class="h-2 w-2 rounded-full bg-amber-400"></span>
       <span>{{ textoLector }}<span v-if="lector.detalle" class="mt-1 block max-w-sm text-[11px] text-amber-200/70">{{ lector.detalle }}</span></span>
     </div>
-    <ToastNotifications />
+    <ToastNotifications v-if="licenciaValida" />
   </div>
 </template>
 
