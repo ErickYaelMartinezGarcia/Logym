@@ -73,7 +73,7 @@ button { cursor: pointer; }
 .drawer-rule { height: 1px; margin: 30px 0 25px; background: #2a2e34; }
 .drawer-section-label { margin: 0 12px 10px; color: #6d737d; font-size: 10px; font-weight: 800; letter-spacing: .16em; }
 .drawer-nav { display: grid; gap: 6px; }
-.drawer-link { display: flex; align-items: center; gap: 13px; padding: 13px 12px; border: 1px solid transparent; border-radius: 14px; color: #aeb3bc; text-decoration: none; transition: .2s; }
+.drawer-link { display: flex; align-items: center; gap: 13px; padding: 8px 12px; border: 1px solid transparent; border-radius: 14px; color: #aeb3bc; text-decoration: none; transition: .2s; }
 .drawer-link:hover, .drawer-link--active { color: #fff; background: #1d2025; border-color: #353940; }
 .drawer-link--active { box-shadow: inset 3px 0 #ee2046; }
 .drawer-icon { display: grid; place-items: center; width: 29px; height: 29px; color: #ee2046; }

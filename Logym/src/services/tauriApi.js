@@ -16,10 +16,33 @@ export const listarClientesMembresia = () => ejecutar('listar_clientes_membresia
 export const buscarClientePorHuella = () => ejecutar('buscar_cliente_por_huella')
 export const checkIn = () => ejecutar('check_in')
 export const capturarHuella = () => ejecutar('capturar_huella')
-export const registrarAsistencia = (clienteId) => ejecutar('registrar_asistencia', { cliente_id: clienteId })
-export const renovarMembresia = (clienteId) => ejecutar('renovar_membresia', {datos: { clienteId }})
+export const registrarAsistencia = (clienteId) => ejecutar('registrar_asistencia', { clienteId })
+export const renovarMembresia = (clienteId, tipoMembresiaId) => ejecutar('renovar_membresia', {datos: { clienteId, tipoMembresiaId }})
 export const obtenerMetricasDashboard = () => ejecutar('obtener_metricas')
 export const compararHuella = (t1, t2) => ejecutar('comparar_huella', {
   t1: t1,
   t2: t2
 })
+
+export const actualizarCliente = (id, datos) => ejecutar('actualizar_cliente', { id, datos })
+export const establecerClienteActivo = (id, activo) => ejecutar('establecer_cliente_activo', { id, activo })
+export const eliminarClienteDefinitivamente = (id, confirmacion) => ejecutar('eliminar_cliente_definitivamente', { id, confirmacion })
+
+export const pausarLectorGlobal = (pausado) => ejecutar('pausar_lector_global', { pausado })
+
+export const listarTiposMembresia = () => ejecutar('listar_tipos_membresia')
+export const obtenerPrecioInscripcion = () => ejecutar('obtener_precio_inscripcion')
+export const reporteFinanciero = (fechaInicio, fechaFin, password) => ejecutar('reporte_financiero', { fechaInicio, fechaFin, password })
+export const resumenIngresos = (periodo, password) => ejecutar('resumen_ingresos', { periodo, password })
+
+export const adminConfigurado = () => ejecutar('admin_configurado')
+export const crearPasswordAdmin = (password) => ejecutar('crear_password_admin', { password })
+export const validarPasswordAdmin = (password) => ejecutar('validar_password_admin', { password })
+export const guardarPlanAdmin = (password, plan) => ejecutar('guardar_plan_admin', { password, ...plan })
+export const guardarInscripcionAdmin = (password, precioCentavos) => ejecutar('guardar_inscripcion_admin', { password, precioCentavos })
+export const obtenerAsistenciasPeriodo = (periodo) => ejecutar('obtener_asistencias_periodo', { periodo })
+
+export const listarPlanesAdmin = (password) => ejecutar('listar_planes_admin', { password })
+
+export const obtenerAsistenciasPorHora = () => ejecutar('obtener_asistencias_por_hora')
+export const obtenerAsistenciasDiarias = (periodo) => ejecutar('obtener_asistencias_diarias', { periodo })
