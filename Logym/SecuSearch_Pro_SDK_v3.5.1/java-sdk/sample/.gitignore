@@ -1,0 +1,9 @@
+.gradle/
+.idea/
+.settings/
+bin/
+build/
+classes/
+.classpath
+.project
+secusearch.tdb

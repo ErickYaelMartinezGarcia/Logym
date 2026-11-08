@@ -8,6 +8,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.artifacts/
+*issuer-private*
+*.private.key
 dist-ssr
 *.local
 
@@ -21,3 +24,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+#tauri /rust 
+src-tauri/target
+
+#bd
+*.db
+*.sqlite

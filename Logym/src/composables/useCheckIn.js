@@ -1,0 +1,142 @@
+import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/tauri'
+import { useRouter } from 'vue-router'
+import { pausarLectorGlobal, renovarMembresia, listarTiposMembresia } from '../services/tauriApi'
+
+/**
+ * Vista del lector global. El backend captura y registra asistencias incluso
+ * fuera de esta ruta; Vue solamente presenta el resultado y gestiona renovaciones.
+ */
+export function useCheckIn() {
+  const router = useRouter()
+  const tiposMembresia = ref([])
+  const tipoMembresiaId = ref('')
+  const mensaje = ref('Coloca tu huella para validar tu acceso')
+  const estadoCheckin = ref('idle')
+  const cargando = ref(false)
+  const procesandoRenovacion = ref(false)
+  const clienteDetectado = ref(null)
+  const modalAbierta = ref(false)
+  const confirmandoRenovacion = ref(false)
+  const lectorActivo = ref(false)
+  const estadoLector = ref('inicializando')
+  let dejarDeEscuchar = null
+  let dejarDeEscucharEstado = null
+  let consultaLectorTimer = null
+  let revisionLector = -1
+  let desmontado = false
+
+  function actualizarEstadoLector(payload) {
+    if (!['inicializando', 'disponible', 'recuperando', 'no_disponible'].includes(payload?.estado)
+      || !Number.isSafeInteger(payload.revision) || payload.revision < revisionLector) return
+    revisionLector = payload.revision
+    estadoLector.value = payload.estado
+    lectorActivo.value = payload.estado === 'disponible'
+  }
+
+  async function consultarEstadoLector() {
+    try {
+      const estado = await invoke('estado_lector')
+      if (!desmontado) actualizarEstadoLector(estado)
+    } catch (error) {
+      if (!desmontado) {
+        lectorActivo.value = false
+        estadoLector.value = 'no_disponible'
+        console.error('No se pudo consultar el estado del lector:', error)
+      }
+    }
+  }
+
+  function formatearFecha(valor) {
+    if (!valor) return 'Sin fecha'
+    const fecha = String(valor).slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return valor
+    const [anio, mes, dia] = fecha.split('-')
+    return `${dia}/${mes}/${anio}`
+  }
+  function etiquetaEstado(estado) {
+    return { pendiente: 'Membresía pendiente', vencida: 'Membresía vencida', por_vencer: 'Membresía por vencer', activa: 'Membresía activa' }[estado] || 'Sin fecha de membresía'
+  }
+  function diasRestantes(cliente) {
+    if (cliente.estado_membresia === 'pendiente') return `Comienza el ${formatearFecha(cliente.fecha_inicio_membresia)}`
+    if (cliente.estado_membresia === 'vencida') return `Venció hace ${Math.abs(cliente.dias_restantes)} día(s)`
+    if (cliente.estado_membresia === 'por_vencer') return `Vence en ${cliente.dias_restantes} día(s)`
+    return `${cliente.dias_restantes} día(s) restantes`
+  }
+  async function recibirLectura(evento) {
+    const { cliente, resultado } = evento.payload || {}
+    if (!cliente) return
+    clienteDetectado.value = cliente
+    modalAbierta.value = true
+    await pausarLectorGlobal(true)
+    if (resultado === 'registrada') {
+      estadoCheckin.value = 'success'
+      mensaje.value = `Asistencia registrada: ${cliente.nombre}`
+    } else if (resultado === 'duplicada') {
+      estadoCheckin.value = 'warning'
+      mensaje.value = `${cliente.nombre} ya registró asistencia hoy. No se agregó otra entrada.`
+    } else {
+      estadoCheckin.value = 'error'
+      mensaje.value = resultado === 'membresia_pendiente'
+        ? `Membresía pendiente. Comienza el ${formatearFecha(cliente.fecha_inicio_membresia)}.`
+        : resultado === 'membresia_vencida'
+        ? 'Membresía vencida. Renueva para ingresar.'
+        : `No se registró asistencia: ${String(resultado).replace(/^error:\s*/i, '')}`
+    }
+  }
+  async function capturarAcceso() {
+    // El servicio Rust ya está escuchando; no lanzar una segunda captura.
+    mensaje.value = 'El lector permanece activo. Coloca tu huella en el sensor.'
+  }
+  async function cerrarModal() {
+    modalAbierta.value = false
+    confirmandoRenovacion.value = false
+    clienteDetectado.value = null
+    estadoCheckin.value = 'idle'
+    mensaje.value = 'Coloca tu huella para validar tu acceso'
+    await pausarLectorGlobal(false)
+  }
+  function solicitarRenovacion() { confirmandoRenovacion.value = true }
+  async function renovar() {
+    if (!clienteDetectado.value || procesandoRenovacion.value || !tipoMembresiaId.value) return
+    procesandoRenovacion.value = true
+    try {
+      clienteDetectado.value = await renovarMembresia(clienteDetectado.value.id, Number(tipoMembresiaId.value))
+      estadoCheckin.value = 'success'
+      confirmandoRenovacion.value = false
+      mensaje.value = `Membresía renovada para ${clienteDetectado.value.nombre}. Vigente hasta ${formatearFecha(clienteDetectado.value.fecha_fin_membresia)}.`
+    } catch (error) {
+      estadoCheckin.value = 'error'
+      mensaje.value = `No se pudo renovar: ${String(error)}`
+    } finally {
+      procesandoRenovacion.value = false
+    }
+  }
+  onMounted(async () => {
+    try {
+      dejarDeEscucharEstado = await listen('logym://lector-estado', ({ payload }) => actualizarEstadoLector(payload))
+    } catch (error) { console.error('No se pudo escuchar el estado del lector:', error) }
+    await consultarEstadoLector()
+    if (!desmontado) consultaLectorTimer = setInterval(consultarEstadoLector, 2000)
+    try {
+      tiposMembresia.value = (await listarTiposMembresia()).filter(plan => !plan.solo_alta)
+      if (tiposMembresia.value.length) tipoMembresiaId.value = String(tiposMembresia.value[0].id)
+    } catch (error) { mensaje.value = `No se pudieron cargar las membresías: ${String(error)}` }
+    try { dejarDeEscuchar = await listen('logym://checkin', recibirLectura) }
+    catch (error) { mensaje.value = `No se pudo escuchar el lector: ${String(error)}` }
+  })
+  onBeforeUnmount(() => {
+    desmontado = true
+    clearInterval(consultaLectorTimer)
+    dejarDeEscucharEstado?.()
+    dejarDeEscuchar?.()
+    if (modalAbierta.value) pausarLectorGlobal(false).catch(console.error)
+  })
+  return {
+    tiposMembresia, tipoMembresiaId,
+    router, mensaje, estadoCheckin, cargando, procesandoRenovacion, clienteDetectado,
+    modalAbierta, confirmandoRenovacion, lectorActivo, estadoLector, formatearFecha, etiquetaEstado,
+    diasRestantes, capturarAcceso, cerrarModal, solicitarRenovacion, renovar
+  }
+}

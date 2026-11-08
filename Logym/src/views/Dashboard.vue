@@ -1,17 +1,75 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
 import AppShell from '../components/AppShell.vue'
-import { inicializarBaseDeDatos, listarClientes, listarClientesMembresia, obtenerMetricasDashboard } from '../db'
+import espartano from '../assets/espartano_laurel.svg'
+import { ref, computed, onMounted } from 'vue'
+import { listen } from '@tauri-apps/api/event'
+import { obtenerAsistenciasDiarias, obtenerAsistenciasPorHora } from '../services/tauriApi'
+import { onBeforeUnmount } from 'vue'
+import { useDashboard } from '../composables/useDashboard'
 
-const clientes = ref([])
-const clientesMembresia = ref([])
-const busqueda = ref('')
-const metricas = ref([
-  { titulo: 'Miembros activos', valor: '0', trend: '+8.4%', icon: '◉' },
-  { titulo: 'Entradas de hoy', valor: '0', trend: 'En tiempo real', icon: '↗' },
-  { titulo: 'Nuevos esta semana', valor: '0', trend: 'Últimos 7 días', icon: '+' },
-  { titulo: 'Huellas activas', valor: '0', trend: 'Biometría lista', icon: '⌁' }
-])
+const {
+  clientes, busqueda, clientesFiltrados, resumenAsistencias, metricas,
+  alertasMembresia, membresiasVencidas, membresiasPorVencer
+} = useDashboard()
+
+const asistenciasHoy = computed(() => metricas.value.find(item => item.titulo === 'Entradas de hoy')?.valor ?? '0')
+const miembrosActivos = computed(() => metricas.value.find(item => item.titulo === 'Miembros activos')?.valor ?? '0')
+const periodoGrafica = ref('semana')
+const asistenciasDiarias = ref([])
+const asistenciasHorarias = ref([])
+const errorGrafica = ref('')
+const diasGrafica = computed(() => {
+  const hoy = new Date()
+  if (periodoGrafica.value === 'dia') {
+    const conteosHoras = new Map(asistenciasHorarias.value.map(d => [d.fecha, Number(d.total)]))
+    return Array.from({length:24},(_,hora) => {
+      const clave = String(hora).padStart(2,'0')
+      return {fecha:clave, etiqueta:clave+':00', total:conteosHoras.get(clave) ?? 0}
+    })
+  }
+  const conteos = new Map(asistenciasDiarias.value.map(d => [d.fecha, Number(d.total)]))
+  if (periodoGrafica.value === 'mes') {
+    return Array.from({ length: 12 }, (_, mes) => {
+      const fecha = [hoy.getFullYear(), String(mes + 1).padStart(2, '0')].join('-')
+      return { fecha, etiqueta: new Date(hoy.getFullYear(), mes, 1).toLocaleDateString('es-MX', { month: 'short' }), total: conteos.get(fecha) ?? 0 }
+    })
+  }
+  const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+  if (periodoGrafica.value === 'semana') inicio.setDate(inicio.getDate() - 6)
+  const resultado = []
+  for (let fecha = new Date(inicio); fecha <= hoy; fecha.setDate(fecha.getDate() + 1)) {
+    const clave = [fecha.getFullYear(), String(fecha.getMonth() + 1).padStart(2, '0'), String(fecha.getDate()).padStart(2, '0')].join('-')
+    resultado.push({ fecha: clave, etiqueta: fecha.toLocaleDateString('es-MX', { weekday: 'short' }), total: conteos.get(clave) ?? 0 })
+  }
+  return resultado
+})
+const maxAsistencias = computed(() => Math.max(1, ...diasGrafica.value.map(d => d.total)))
+const puntosGrafica = computed(() => diasGrafica.value.map((d, i, arr) => ({
+  ...d,
+  x: arr.length === 1 ? 350 : 35 + i * 630 / (arr.length - 1),
+  y: 210 - d.total / maxAsistencias.value * 180
+})))
+const lineaGrafica = computed(() => puntosGrafica.value.map(p => p.x + ',' + p.y).join(' '))
+const areaGrafica = computed(() => puntosGrafica.value.length ? `35,210 ${lineaGrafica.value} 665,210` : '')
+const topDias = computed(() => [...diasGrafica.value].sort((a, b) => b.total - a.total).slice(0, 5))
+const totalPeriodo = computed(() => diasGrafica.value.reduce((n,d)=>n+d.total,0))
+const horaPico = computed(() => topDias.value[0]?.total ? topDias.value[0] : null)
+async function cargarGrafica() {
+  try {
+    if (periodoGrafica.value === 'dia') asistenciasHorarias.value = await obtenerAsistenciasPorHora()
+    else asistenciasDiarias.value = await obtenerAsistenciasDiarias(periodoGrafica.value)
+    errorGrafica.value = ''
+  }
+  catch (e) { errorGrafica.value = String(e) }
+}
+let desuscribirGrafica
+onMounted(async () => {
+  await cargarGrafica()
+  try { desuscribirGrafica = await listen('logym://datos-actualizados', cargarGrafica) }
+  catch (e) { console.error('No se pudo escuchar actualización de asistencias', e) }
+})
+onBeforeUnmount(() => desuscribirGrafica?.())
+
 
 function formatearFecha(valor) {
   if (!valor) return 'Sin fecha'
@@ -22,149 +80,356 @@ function formatearFecha(valor) {
 }
 
 function etiquetaEstado(estado) {
+  if (estado === 'pendiente') return 'Pendiente'
   if (estado === 'vencida') return 'Vencida'
   if (estado === 'por_vencer') return 'Por vencer'
   if (estado === 'sin_fecha') return 'Sin fecha'
   return 'Activa'
 }
 
-const clientesFiltrados = computed(() => {
-  const termino = busqueda.value.trim().toLowerCase()
-  if (!termino) return clientesMembresia.value
-  return clientesMembresia.value.filter((cliente) => {
-    const nombre = String(cliente.nombre || '').toLowerCase()
-    const telefono = String(cliente.telefono || '').toLowerCase()
-    const id = String(cliente.id || '')
-    return nombre.includes(termino) || telefono.includes(termino) || id.includes(termino)
-  })
-})
-
-const alertasMembresia = computed(() => clientesMembresia.value.filter((cliente) => cliente.estado_membresia === 'vencida' || cliente.estado_membresia === 'por_vencer'))
-
-const membresiasVencidas = computed(() => clientesMembresia.value.filter((cliente) => cliente.estado_membresia === 'vencida').length)
-const membresiasPorVencer = computed(() => clientesMembresia.value.filter((cliente) => cliente.estado_membresia === 'por_vencer').length)
-
-onMounted(async () => {
-  try {
-    await inicializarBaseDeDatos()
-    clientes.value = await listarClientes()
-    clientesMembresia.value = await listarClientesMembresia()
-    const datos = await obtenerMetricasDashboard()
-    metricas.value[0].valor = String(datos.total_clientes || 0)
-    metricas.value[1].valor = String(datos.asistencias_hoy || 0)
-    metricas.value[2].valor = String(datos.nuevos_semana || 0)
-    metricas.value[3].valor = String(datos.huella_activas || 0)
-  } catch (error) {
-    console.error('Error al cargar dashboard:', error)
-  }
-})
 </script>
 
 <template>
   <AppShell>
-    <div class="dashboard-head" style="display:flex; justify-content:space-between; gap:24px; align-items:end; margin-bottom:32px">
-      <div><p class="eyebrow">CENTRO DE CONTROL / 01</p><h1 class="page-title">Tu gimnasio,<br><span style="color:#ee2046">en movimiento.</span></h1><p class="muted" style="margin:15px 0 0">Una vista clara de lo que está pasando hoy en VIRTUS.</p></div>
-      <div class="surface" style="padding:13px 16px; min-width:168px"><span class="status-dot" style="display:inline-block; margin-right:8px"></span><span style="font-size:12px">Operación normal</span><div class="muted" style="font-size:11px; margin-top:5px">Última sincronización: ahora</div></div>
+    <div class="dashboard-head relative isolate overflow-hidden rounded-2xl py-5">
+      <img :src="espartano" alt="" aria-hidden="true" class="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-48 w-48 -translate-x-1/2 -translate-y-1/2 object-contain opacity-[0.09] brightness-0 invert sm:h-64 sm:w-64" />
+      <div>
+        <p class="eyebrow">CENTRO DE CONTROL / 01</p>
+        <h1 class="page-title">Tu gimnasio,<br><span class="accent-text">en movimiento.</span></h1>
+        <p class="muted page-intro__description">Una vista clara de lo que está pasando hoy en VIRTUS.</p>
+      </div>
+      <div class="surface dashboard-status"><span class="status-dot mr-2 inline-block"></span><span
+          class="dashboard-status__label">Operación normal</span>
+        <div class="muted dashboard-status__detail">Última sincronización: ahora</div>
+      </div>
     </div>
-
-    <section class="metrics-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:25px">
-      <article v-for="item in metricas" :key="item.titulo" class="surface" style="padding:21px">
-        <div style="display:flex; justify-content:space-between; color:#ee2046; font-size:20px"><span>{{ item.icon }}</span><span class="muted" style="font-size:10px; letter-spacing:.08em">{{ item.trend }}</span></div>
-        <p class="muted" style="font-size:12px; margin:25px 0 7px">{{ item.titulo }}</p><strong style="font-size:31px; letter-spacing:-.04em">{{ item.valor }}</strong>
-      </article>
+    <section aria-label="Resumen operativo" class="mt-6 mb-5 grid grid-cols-1 gap-5 border-y border-white/10 py-6 sm:grid-cols-3 sm:divide-x sm:divide-white/10">
+      <div class="flex items-start gap-4 px-2 sm:pr-5">
+        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 11a3 3 0 0 0 0-6M17 15a5 5 0 0 1 4 5"/></svg>
+        <div>
+        <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Asistencias hoy</p>
+        <strong class="mt-2 block text-4xl font-black tracking-tight text-white">{{ asistenciasHoy }}</strong>
+        <span class="mt-1 block text-xs text-zinc-500">Entradas registradas hoy</span></div>
+      </div>
+      <div class="flex items-start gap-4 px-2 sm:px-6">
+        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h3M14 14h3"/></svg>
+        <div>
+        <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Asistencias últimos 7 días</p>
+        <strong class="mt-2 block text-4xl font-black tracking-tight text-white">{{ resumenAsistencias.ultimos7Dias }}</strong>
+        <span class="mt-1 block text-xs text-zinc-500">Periodo móvil de siete días</span></div>
+      </div>
+      <div class="flex items-start gap-4 px-2 sm:pl-6">
+        <svg class="mt-1 h-9 w-9 shrink-0 text-[#ee2046]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5"/></svg>
+        <div>
+        <p class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Miembros activos</p>
+        <strong class="mt-2 block text-4xl font-black tracking-tight text-[#ee2046]">{{ miembrosActivos }}</strong>
+        <span class="mt-1 block text-xs text-zinc-500">Clientes habilitados</span></div>
+      </div>
+    </section>
+    <section class="surface page-section mt-[18px]">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">BUSCADOR DE CLIENTES</p>
+          <h2 class="section-title">Registro y vencimiento de membresía</h2>
+        </div>
+        <input v-model="busqueda" class="search-input" type="search" maxlength="80"
+          placeholder="Escribe nombre, teléfono o ID para buscar"
+          aria-label="Buscar cliente por nombre, teléfono o ID" />
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr class="muted">
+              <th>MIEMBRO</th>
+              <th>PLAN</th>
+              <th>REGISTRO</th>
+              <th>INICIO</th>
+              <th>FIN</th>
+              <th>ESTADO</th>
+              <th>DÍAS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="cliente in clientesFiltrados" :key="`busqueda-${cliente.id}`">
+              <td><strong>{{ cliente.nombre }}</strong>
+                <div class="muted secondary">ID #{{ cliente.id }} · {{ cliente.telefono || 'Sin teléfono' }}</div>
+              </td>
+              <td><span class="inline-flex rounded-md bg-[#ee2046]/10 px-2.5 py-1 text-xs font-semibold text-[#ff6b85]">{{ cliente.tipo_membresia }}</span></td>
+              <td class="muted">{{ formatearFecha(cliente.fecha_registro) }}</td>
+              <td class="muted">{{ formatearFecha(cliente.fecha_inicio_membresia) }}</td>
+              <td class="muted">{{ formatearFecha(cliente.fecha_fin_membresia) }}</td>
+              <td><span class="status-chip" :class="`status-${cliente.estado_membresia}`">{{
+                etiquetaEstado(cliente.estado_membresia) }}</span></td>
+              <td class="muted">{{ cliente.estado_membresia === 'sin_fecha' ? '-' : cliente.dias_restantes }}</td>
+            </tr>
+            <tr v-if="!busqueda.trim()">
+              <td colspan="6" class="muted empty-state">Escribe un nombre, teléfono o ID para consultar un cliente.</td>
+            </tr>
+            <tr v-else-if="!clientesFiltrados.length">
+              <td colspan="6" class="muted empty-state">No se encontraron clientes con ese criterio.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
-    <section class="surface" style="padding:24px; margin-bottom:20px">
-      <div style="display:flex; justify-content:space-between; align-items:end; gap:14px; margin-bottom:16px">
-        <div><p class="eyebrow">MEMBRESÍAS CRÍTICAS</p><h2 style="margin:7px 0 0; font-size:20px">Vencidas y próximas a caducar</h2></div>
+    <section class="surface page-section">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p class="eyebrow">ASISTENCIAS</p>
+          <h2 class="section-title">{{ periodoGrafica === 'dia' ? 'Entradas por hora de hoy' : 'Actividad del gimnasio' }}</h2>
+        </div>
+        <div class="flex gap-1 rounded-lg bg-black/30 p-1" role="group" aria-label="Periodo de asistencias">
+          <button v-for="opcion in [{ id: 'dia', nombre: 'Hoy' }, { id: 'semana', nombre: 'Semana' }, { id: 'mes', nombre: 'Meses' }]"
+            :key="opcion.id" type="button" @click="periodoGrafica = opcion.id; cargarGrafica()"
+            :aria-pressed="periodoGrafica === opcion.id"
+            class="rounded-md px-3 py-1.5 text-xs font-semibold"
+            :class="periodoGrafica === opcion.id ? 'bg-[#ee2046] text-white' : 'text-zinc-400 hover:bg-white/10 hover:text-white'">{{ opcion.nombre }}</button>
+        </div>
+      </div>
+      <p v-if="errorGrafica" role="alert" class="mt-3 text-xs text-red-300">{{ errorGrafica }}</p>
+      <div class="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-4">
+        <div class="min-w-0 lg:col-span-3">
+          <p class="mb-2 text-xs text-zinc-400">{{ periodoGrafica === 'dia' ? 'Cada punto representa las entradas durante esa hora.' : 'Cada punto representa el total de entradas del periodo.' }}</p>
+          <svg class="block h-auto w-full min-h-44 sm:min-h-56" viewBox="0 0 700 240" preserveAspectRatio="xMidYMid meet" role="img"
+            :aria-label="'Tendencia de asistencias: ' + diasGrafica.map(d => d.etiqueta + ' ' + d.total).join(', ')">
+            <defs><linearGradient id="virtus-asistencias" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ee2046" stop-opacity=".35"/><stop offset="100%" stop-color="#ee2046" stop-opacity="0"/></linearGradient></defs>
+            <path v-for="y in [30, 90, 150, 210]" :key="y" :d="'M 0 ' + y + ' H 700'" stroke="#ffffff" stroke-opacity=".09" stroke-width="1" stroke-dasharray="6 7"/>
+            <polygon v-if="puntosGrafica.length > 1" :points="areaGrafica" fill="url(#virtus-asistencias)"/>
+            <polyline :points="lineaGrafica" fill="none" stroke="#ee2046" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+            <g v-for="p in puntosGrafica" :key="p.fecha">
+              <circle :cx="p.x" :cy="p.y" r="4.5" fill="#ee2046" stroke="#fff" stroke-width="2"><title>{{ p.etiqueta }}: {{ p.total }} entradas</title></circle>
+              <text v-if="p.total > 0" :x="p.x" :y="Math.max(14,p.y-11)" text-anchor="middle" fill="white" font-size="11" font-weight="700">{{ p.total }}</text>
+            </g>
+          </svg>
+          <div class="mt-1 flex justify-between gap-1 text-[10px] text-zinc-400">
+            <span v-for="(dia,indice) in diasGrafica" :key="dia.fecha" class="min-w-0 flex-1 truncate text-center" :title="dia.etiqueta + ': ' + dia.total + ' entradas'">{{ periodoGrafica === 'dia' && indice % 3 !== 0 ? '' : dia.etiqueta }}</span>
+          </div>
+        </div>
+        <aside class="border-t border-white/10 pt-3 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+          <h3 class="mb-3 text-sm font-semibold text-white">{{ periodoGrafica === 'dia' ? 'Horas con más entradas' : 'Periodos destacados' }}</h3>
+          <p class="mb-3 text-xs text-zinc-400">Total: <strong class="text-white">{{ totalPeriodo }} entradas</strong></p>
+          <div v-for="dia in topDias" :key="dia.fecha" class="mb-3 flex items-center gap-2 text-xs">
+            <span class="w-14 shrink-0 capitalize text-zinc-400">{{ dia.etiqueta }}</span>
+            <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
+              <div class="h-full rounded-full bg-[#ee2046]" :style="{ width: (dia.total / maxAsistencias * 100) + '%' }"></div>
+            </div>
+            <strong class="w-6 text-right text-white">{{ dia.total }}</strong>
+          </div>
+          <p class="mt-3 text-xs text-zinc-400">{{ horaPico ? (periodoGrafica === 'dia' ? 'Hora pico: ' : 'Máximo: ') + horaPico.etiqueta + ' · ' + horaPico.total + ' entradas' : 'Sin entradas registradas' }}</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="surface page-section">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">MEMBRESÍAS CRÍTICAS</p>
+          <h2 class="section-title">Vencidas y próximas a caducar</h2>
+        </div>
         <div class="alert-counters">
           <span class="counter-pill danger">Vencidas: {{ membresiasVencidas }}</span>
           <span class="counter-pill warning">Próximas 7 días: {{ membresiasPorVencer }}</span>
         </div>
       </div>
-      <div style="overflow-x:auto">
-        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px">
+      <div class="table-scroll">
+        <table class="data-table">
           <thead>
             <tr class="muted">
-              <th style="padding:13px 8px">MIEMBRO</th>
-              <th style="padding:13px 8px">TELÉFONO</th>
-              <th style="padding:13px 8px">INICIO</th>
-              <th style="padding:13px 8px">FIN</th>
-              <th style="padding:13px 8px">ESTADO</th>
+              <th>MIEMBRO</th>
+              <th>TELÉFONO</th>
+              <th>INICIO</th>
+              <th>FIN</th>
+              <th>ESTADO</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="cliente in alertasMembresia" :key="`alerta-${cliente.id}`" style="border-top:1px solid #292d33">
-              <td style="padding:14px 8px"><strong>{{ cliente.nombre }}</strong></td>
-              <td class="muted" style="padding:14px 8px">{{ cliente.telefono || 'Sin teléfono' }}</td>
-              <td class="muted" style="padding:14px 8px">{{ formatearFecha(cliente.fecha_inicio_membresia) }}</td>
-              <td class="muted" style="padding:14px 8px">{{ formatearFecha(cliente.fecha_fin_membresia) }}</td>
-              <td style="padding:14px 8px"><span class="status-chip" :class="`status-${cliente.estado_membresia}`">{{ etiquetaEstado(cliente.estado_membresia) }}</span></td>
+            <tr v-for="cliente in alertasMembresia" :key="`alerta-${cliente.id}`">
+              <td><strong>{{ cliente.nombre }}</strong></td>
+              <td class="muted">{{ cliente.telefono || 'Sin teléfono' }}</td>
+              <td class="muted">{{ formatearFecha(cliente.fecha_inicio_membresia) }}</td>
+              <td class="muted">{{ formatearFecha(cliente.fecha_fin_membresia) }}</td>
+              <td><span class="status-chip" :class="`status-${cliente.estado_membresia}`">{{
+                etiquetaEstado(cliente.estado_membresia) }}</span></td>
             </tr>
-            <tr v-if="!alertasMembresia.length"><td colspan="5" class="muted" style="padding:23px 8px; text-align:center">No hay membresías vencidas o por vencer en los próximos 7 días.</td></tr>
+            <tr v-if="!alertasMembresia.length">
+              <td colspan="5" class="muted empty-state">No hay membresías vencidas o por vencer en los próximos 7 días.
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <div class="dashboard-columns" style="display:grid; grid-template-columns:minmax(0,1.4fr) minmax(280px,.8fr); gap:18px">
-      <section class="surface" style="padding:24px">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px"><div><p class="eyebrow">BASE DE MIEMBROS</p><h2 style="margin:7px 0 0; font-size:20px">Altas recientes</h2></div><span class="muted" style="font-size:12px">Últimos 20</span></div>
-        <div class="neon-line" style="margin-bottom:4px"></div>
-        <div style="overflow-x:auto"><table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px"><thead><tr class="muted"><th style="padding:14px 8px">MIEMBRO</th><th style="padding:14px 8px">TELÉFONO</th><th style="padding:14px 8px">ALTA</th></tr></thead><tbody><tr v-for="cliente in clientes" :key="cliente.id" style="border-top:1px solid #292d33"><td style="padding:15px 8px"><strong>{{ cliente.nombre }}</strong><div class="muted" style="font-size:11px; margin-top:3px">ID #{{ cliente.id }}</div></td><td class="muted" style="padding:15px 8px">{{ cliente.telefono || 'Sin teléfono' }}</td><td class="muted" style="padding:15px 8px">{{ cliente.fecha_registro }}</td></tr><tr v-if="!clientes.length"><td colspan="3" class="muted" style="padding:28px 8px; text-align:center">Aún no hay miembros registrados.</td></tr></tbody></table></div>
+    <div class="mt-6">
+      <section class="surface dashboard-panel">
+        <div class="dashboard-panel__heading">
+          <div>
+            <p class="eyebrow">BASE DE MIEMBROS</p>
+            <h2 class="dashboard-panel__heading-title">Altas recientes</h2>
+          </div><span class="muted dashboard-panel__heading-meta--small">Últimos 20</span>
+        </div>
+        <div class="neon-line mb-1"></div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr class="muted">
+                <th>MIEMBRO</th>
+                <th>TELÉFONO</th>
+                <th>ALTA</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="cliente in clientes" :key="cliente.id">
+                <td><strong>{{ cliente.nombre }}</strong>
+                  <div class="muted secondary">ID #{{ cliente.id }}</div>
+                </td>
+                <td class="muted">{{ cliente.telefono || 'Sin teléfono' }}</td>
+                <td class="muted">{{ cliente.fecha_registro }}</td>
+              </tr>
+              <tr v-if="!clientes.length">
+                <td colspan="3" class="muted empty-state">Aún no hay miembros registrados.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
-      <section class="surface" style="padding:24px"><p class="eyebrow">RITMO SEMANAL</p><h2 style="margin:7px 0 4px; font-size:20px">Asistencias</h2><p class="muted" style="font-size:12px; margin-top:0">Actividad estimada de los últimos 7 días</p><div style="height:190px; display:flex; align-items:end; gap:9px; margin-top:25px"><div v-for="(height,index) in [36,52,44,71,57,86,63]" :key="index" :style="{height: `${height}%`}" style="flex:1; border-radius:7px 7px 2px 2px; background:linear-gradient(#ee2046,#85142e); box-shadow:0 0 12px rgba(238,32,70,.2)"></div></div><div style="display:flex; justify-content:space-between; color:#747a84; font-size:10px; margin-top:10px"><span>LUN</span><span>MAR</span><span>MIÉ</span><span>JUE</span><span>VIE</span><span>SÁB</span><span>DOM</span></div></section>
-    </div>
 
-    <section class="surface" style="padding:24px; margin-top:18px">
-      <div style="display:flex; justify-content:space-between; align-items:end; gap:14px; margin-bottom:14px">
-        <div><p class="eyebrow">BUSCADOR DE CLIENTES</p><h2 style="margin:7px 0 0; font-size:20px">Registro y vencimiento de membresía</h2></div>
-        <input v-model="busqueda" class="search-input" type="search" placeholder="Buscar por nombre, teléfono o ID" />
-      </div>
-      <div style="overflow-x:auto">
-        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px">
-          <thead>
-            <tr class="muted">
-              <th style="padding:13px 8px">MIEMBRO</th>
-              <th style="padding:13px 8px">REGISTRO</th>
-              <th style="padding:13px 8px">INICIO</th>
-              <th style="padding:13px 8px">FIN</th>
-              <th style="padding:13px 8px">ESTADO</th>
-              <th style="padding:13px 8px">DÍAS</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="cliente in clientesFiltrados" :key="`busqueda-${cliente.id}`" style="border-top:1px solid #292d33">
-              <td style="padding:14px 8px"><strong>{{ cliente.nombre }}</strong><div class="muted" style="font-size:11px; margin-top:3px">ID #{{ cliente.id }} · {{ cliente.telefono || 'Sin teléfono' }}</div></td>
-              <td class="muted" style="padding:14px 8px">{{ formatearFecha(cliente.fecha_registro) }}</td>
-              <td class="muted" style="padding:14px 8px">{{ formatearFecha(cliente.fecha_inicio_membresia) }}</td>
-              <td class="muted" style="padding:14px 8px">{{ formatearFecha(cliente.fecha_fin_membresia) }}</td>
-              <td style="padding:14px 8px"><span class="status-chip" :class="`status-${cliente.estado_membresia}`">{{ etiquetaEstado(cliente.estado_membresia) }}</span></td>
-              <td class="muted" style="padding:14px 8px">{{ cliente.estado_membresia === 'sin_fecha' ? '-' : cliente.dias_restantes }}</td>
-            </tr>
-            <tr v-if="!clientesFiltrados.length"><td colspan="6" class="muted" style="padding:23px 8px; text-align:center">No se encontraron clientes con ese criterio.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
+    </div>
   </AppShell>
 </template>
 
 <style scoped>
-.alert-counters { display:flex; gap:9px; flex-wrap:wrap; }
-.counter-pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:700; }
-.counter-pill.danger { color:#ff7a93; background:#3c1721; border:1px solid #6e1d30; }
-.counter-pill.warning { color:#f6d873; background:#352b10; border:1px solid #60501b; }
-.status-chip { display:inline-flex; align-items:center; padding:5px 9px; border-radius:999px; font-size:11px; font-weight:700; border:1px solid transparent; }
-.status-vencida { color:#ff7a93; border-color:#6e1d30; background:#3c1721; }
-.status-por_vencer { color:#f6d873; border-color:#60501b; background:#352b10; }
-.status-activa { color:#6de1a9; border-color:#1b5e44; background:#103024; }
-.status-sin_fecha { color:#9aa1ab; border-color:#414750; background:#22262d; }
-.search-input { min-width:270px; border:1px solid #343941; border-radius:10px; padding:10px 12px; color:#fff; background:#111317; }
-.search-input:focus { outline:0; border-color:#ee2046; box-shadow:0 0 0 3px rgba(238,32,70,.12); }
+.alert-counters {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.counter-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.counter-pill.danger {
+  color: #ff7a93;
+  background: #3c1721;
+  border: 1px solid #6e1d30;
+}
+
+.counter-pill.warning {
+  color: #f6d873;
+  background: #352b10;
+  border: 1px solid #60501b;
+}
+
+.attendance-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.attendance-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #292d33;
+  border-radius: 10px;
+  background: #111317;
+}
+
+.attendance-item span {
+  font-size: 12px;
+}
+
+.attendance-item strong {
+  font-size: 24px;
+}
+
+.attendance-note {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 28px;
+  padding: 13px;
+  border: 1px solid #292d33;
+  border-radius: 9px;
+  color: #c8cbd0;
+  font-size: 12px;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.status-vencida {
+  color: #ff7a93;
+  border-color: #6e1d30;
+  background: #3c1721;
+}
+
+.status-por_vencer {
+  color: #f6d873;
+  border-color: #60501b;
+  background: #352b10;
+}
+
+.status-activa {
+  color: #6de1a9;
+  border-color: #1b5e44;
+  background: #103024;
+}
+
+.status-sin_fecha {
+  color: #9aa1ab;
+  border-color: #414750;
+  background: #22262d;
+}
+
+.search-input {
+  width: min(390px, 100%);
+  min-width: 320px;
+  border: 1px solid #343941;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #fff;
+  background: #111317;
+}
+
+.search-input:focus {
+  outline: 0;
+  border-color: #ee2046;
+  box-shadow: 0 0 0 3px rgba(238, 32, 70, .12);
+}
+
 @media (max-width: 800px) {
-  .dashboard-head { align-items: start !important; flex-direction: column; }
-  .dashboard-columns { grid-template-columns: 1fr !important; }
-  .search-input { width:100%; min-width:0; }
+  .dashboard-head {
+    align-items: start !important;
+    flex-direction: column;
+  }
+
+  .dashboard-columns {
+    grid-template-columns: 1fr !important;
+  }
+
+  .attendance-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .search-input {
+    width: 100%;
+    min-width: 0;
+  }
 }
 </style>
