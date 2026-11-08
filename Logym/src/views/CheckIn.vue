@@ -3,8 +3,9 @@ import AppShell from '../components/AppShell.vue'
 import { useCheckIn } from '../composables/useCheckIn'
 
 const {
+  tiposMembresia, tipoMembresiaId,
   router, mensaje, estadoCheckin, cargando, procesandoRenovacion, clienteDetectado, modalAbierta,
-  confirmandoRenovacion, lectorActivo, formatearFecha, etiquetaEstado, diasRestantes,
+  confirmandoRenovacion, lectorActivo, estadoLector, formatearFecha, etiquetaEstado, diasRestantes,
   capturarAcceso, cerrarModal, solicitarRenovacion, renovar
 } = useCheckIn()
 </script>
@@ -26,7 +27,7 @@ const {
         </div>
         <div class="reader-status"><span class="reader-status__dot"
             :class="{ 'reader-status__dot--active': lectorActivo }"></span>
-            <span>{{ lectorActivo ? 'Lector Hamster Pro20 · listo' : 'Iniciando lector...' }}</span></div>
+            <span>{{ lectorActivo ? 'Lector Hamster Pro20 · listo' : estadoLector === 'no_disponible' ? 'Lector no disponible' : estadoLector === 'recuperando' ? 'Recuperando lector...' : 'Iniciando lector...' }}</span></div>
         <div class="checkin-status" :class="`checkin-status--${estadoCheckin}`">
           <p class="checkin-message">{{ mensaje }}</p>
         </div> <button class="text-button text-button--secondary" :disabled="cargando" @click="capturarAcceso(true)">{{
@@ -34,11 +35,11 @@ const {
           @click="router.push('/registro')">¿Nuevo miembro? Regístralo aquí</button>
         <div v-if="modalAbierta && clienteDetectado" class="cliente-modal-backdrop" @click.self="cerrarModal">
           <div class="cliente-modal" :class="{
-            'cliente-modal--valid': clienteDetectado.estado_membresia === 'activa',
+            'cliente-modal--valid': ['activa', 'por_vencer'].includes(clienteDetectado.estado_membresia),
             'cliente-modal--expired': clienteDetectado.estado_membresia === 'vencida'
           }" role="dialog" aria-modal="true" aria-label="Información del cliente">
             <button class="modal-close" aria-label="Cerrar información del cliente" @click="cerrarModal">×</button>
-            <div v-if="clienteDetectado.estado_membresia === 'activa'" class="access-approved"><span>✓</span> ACCESO
+            <div v-if="['activa', 'por_vencer'].includes(clienteDetectado.estado_membresia)" class="access-approved"><span>✓</span> ACCESO
               VÁLIDO</div>
             <div class="panel-head">
               <div v-if="clienteDetectado.foto_base64" class="cliente-foto-frame">
@@ -50,6 +51,7 @@ const {
                   <small>ID #{{ clienteDetectado.id }} · Cliente: {{ clienteDetectado.telefono || 'Sin teléfono'
                     }}</small>
                   <small>Emergencia: {{ clienteDetectado.telefono_emergencia || 'Sin teléfono' }}</small>
+                  <small>Tipo de membresía: {{ clienteDetectado.tipo_membresia || 'Sin plan registrado' }}</small>
                   <span class="estado-chip" :class="`estado-${clienteDetectado.estado_membresia}`">{{
                     etiquetaEstado(clienteDetectado.estado_membresia) }}</span>
                 </div>
@@ -72,8 +74,13 @@ const {
                   <button v-if="!confirmandoRenovacion" class="secondary-button" @click="solicitarRenovacion">Renovar
                     membresía</button>
                   <div v-else class="renewal-confirmation">
+                    <label>Plan para renovar (sin inscripción)
+                      <select v-model="tipoMembresiaId" class="renewal-select">
+                        <option v-for="plan in tiposMembresia" :key="plan.id" :value="String(plan.id)">{{ plan.nombre }} — {{ (plan.precio_centavos / 100).toLocaleString("es-MX", {style:"currency",currency:"MXN"}) }}</option>
+                      </select>
+                    </label>
                     <strong>¿Autorizar renovación?</strong>
-                    <p>Se registrarán 30 días a partir de hoy.</p>
+                    <p>Se aplicará la duración del plan seleccionado, sin cobrar inscripción.</p>
                     <div class="renewal-actions">
                       <button class="text-button text-button--secondary" :disabled="procesandoRenovacion"
                         @click="confirmandoRenovacion = false">Cancelar</button>
@@ -96,12 +103,12 @@ const {
   display: grid;
   grid-template-columns: 1fr minmax(320px, 430px);
   align-items: center;
-  gap: 12%;
-  min-height: calc(100vh - 160px);
+  gap: clamp(20px, 5vw, 90px);
+  min-height: min(620px, calc(100dvh - 100px));
 }
 
 .checkin-card {
-  padding: 42px 38px;
+  padding: clamp(18px, 3vh, 36px) 32px;
   text-align: center;
 }
 
@@ -109,9 +116,9 @@ const {
   position: relative;
   display: grid;
   place-items: center;
-  width: 180px;
-  height: 180px;
-  margin: 0 auto 26px;
+  width: clamp(115px, 21vh, 170px);
+  height: clamp(115px, 21vh, 170px);
+  margin: 0 auto 18px;
   border: 1px solid #5a1b2a;
   border-radius: 50%;
   color: #ee2046;
@@ -124,7 +131,7 @@ const {
 }
 
 .fingerprint-orb span {
-  font-size: 78px;
+  font-size: clamp(48px, 9vh, 72px);
   line-height: 1;
   transform: rotate(90deg);
   text-shadow: 0 0 25px #ee2046;
@@ -412,6 +419,8 @@ const {
   font-size: 12px;
   line-height: 1.5;
 }
+
+.renewal-select { display:block; width:100%; padding:10px; margin:8px 0; color:white; background:#171a1f; border:1px solid #60501b; border-radius:8px; }
 
 .renewal-confirmation {
   padding: 13px;
