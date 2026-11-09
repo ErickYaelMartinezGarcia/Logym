@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import AppShell from '../components/AppShell.vue'
+import { duracionPlan } from '../services/duracionPlanes'
 import { adminConfigurado, crearPasswordAdmin, validarPasswordAdmin, listarPlanesAdmin, obtenerPrecioInscripcion, guardarPlanAdmin, guardarInscripcionAdmin, reporteFinanciero } from '../services/tauriApi'
 
 const pestaña = ref('planes')
@@ -71,7 +72,8 @@ const confirmar = ref('')
 const mensaje = ref('')
 const planes = ref([])
 const inscripcion = ref(0)
-const nuevo = ref({ nombre:'', meses:1, precio_pesos:0, activo:true })
+const nuevo = ref({ nombre:'', unidad:'meses', duracion:1, precio_pesos:0, activo:true })
+const textoDuracion = plan => duracionPlan({ duracion_meses: plan.duracion, duracion_dias: plan.unidad === 'dias' ? plan.duracion : null })
 const moneda = n => (n/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'})
 const aCentavos = n => Math.round(Number(n)*100)
 function mensajeErrorAdministracion(error, alternativa) {
@@ -91,7 +93,7 @@ function mensajeErrorAdministracion(error, alternativa) {
   return permitidos.includes(texto) ? texto : alternativa
 }
 async function cargar() {
-  planes.value = (await listarPlanesAdmin(password.value)).map(p => ({...p, precio_pesos:p.precio_centavos/100}))
+  planes.value = (await listarPlanesAdmin(password.value)).map(p => ({...p, precio_pesos:p.precio_centavos/100, unidad:p.duracion_dias != null ? 'dias' : 'meses', duracion:p.duracion_dias ?? p.duracion_meses}))
   inscripcion.value = (await obtenerPrecioInscripcion())/100
 }
 async function cargarFinanzas() {
@@ -133,8 +135,9 @@ async function entrar() {
 async function guardarPlan(plan) {
   mensaje.value=''
   try {
-    const { id, nombre, duracion_meses, meses, precio_pesos, activo } = plan
-    await guardarPlanAdmin(password.value,{ id:id||null, nombre, meses:Number(duracion_meses||meses), precioCentavos:aCentavos(precio_pesos), activo })
+    const { id, nombre, unidad, duracion, precio_pesos, activo } = plan
+    if (!['meses', 'dias'].includes(unidad) || !Number.isInteger(duracion) || duracion < 1 || duracion > (unidad === 'dias' ? 3660 : 36)) throw Error('Datos de membresía inválidos')
+    await guardarPlanAdmin(password.value,{ id:id||null, nombre, meses:unidad === 'meses' ? duracion : 1, dias:unidad === 'dias' ? duracion : null, precioCentavos:aCentavos(precio_pesos), activo })
     await cargar()
     mensaje.value='Plan guardado. Los cobros anteriores permanecen intactos.'
   } catch(e) {
@@ -233,7 +236,7 @@ onMounted(consultarEstadoAdmin)
         </div>
         <p v-if="resumenFinanzas && periodoFinanzas !== 'personalizado'" class="text-sm text-zinc-300"><span class="font-semibold text-[#ff6b85]">Periodo consultado:</span> {{ periodoMostrado }}</p>
         <p v-if="errorFinanzas" role="alert" class="text-sm text-red-300">{{ errorFinanzas }}</p>
-        <div v-if="resumenFinanzas" class="grid gap-4 md:grid-cols-3">
+        <div v-if="resumenFinanzas" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <article class="rounded-2xl border border-[#ee2046]/30 bg-gradient-to-br from-[#34101c] to-[#16151b] p-6">
             <p class="text-xs font-semibold uppercase tracking-wider text-zinc-300">Total cobrado</p>
             <strong class="mt-4 block text-3xl font-black text-white">{{ moneda(resumenFinanzas.total_centavos) }}</strong>
@@ -248,6 +251,11 @@ onMounted(consultarEstadoAdmin)
             <p class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Inscripciones</p>
             <strong class="mt-4 block text-3xl font-black text-white">{{ moneda(resumenFinanzas.inscripciones_centavos) }}</strong>
             <div class="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10"><div class="h-full rounded-full bg-[#ff9a54]" :style="{ width: resumenFinanzas.total_centavos ? (resumenFinanzas.inscripciones_centavos / resumenFinanzas.total_centavos * 100) + '%' : '0%' }"></div></div>
+          </article>
+          <article class="rounded-2xl border border-white/10 bg-[#16191e] p-6">
+            <p class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Visitas ocasionales</p>
+            <strong class="mt-4 block text-3xl font-black text-white">{{ moneda(resumenFinanzas.visitas_centavos || 0) }}</strong>
+            <div class="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10"><div class="h-full rounded-full bg-[#ff6b85]" :style="{ width: resumenFinanzas.total_centavos ? ((resumenFinanzas.visitas_centavos || 0) / resumenFinanzas.total_centavos * 100) + '%' : '0%' }"></div></div>
           </article>
         </div>
         <section v-if="resumenFinanzas" class="rounded-2xl border border-white/10 bg-[#15171d] p-5 sm:p-6">
@@ -300,8 +308,10 @@ onMounted(consultarEstadoAdmin)
                 <label class="grid min-w-0 gap-2 text-xs text-[#b7bdc6]">Nombre
                   <input v-model="plan.nombre" maxlength="60" class="w-full min-w-0 rounded-lg border border-[#343941] bg-[#1b1e24] px-3 py-2.5 text-sm text-white outline-none focus:border-[#ee2046]" />
                 </label>
-                <label class="grid gap-2 text-xs text-[#b7bdc6]">Meses
-                  <input v-model.number="plan.duracion_meses" type="number" min="1" max="36" class="w-full rounded-lg border border-[#343941] bg-[#1b1e24] px-3 py-2.5 text-sm text-white outline-none focus:border-[#ee2046]" />
+                <label class="grid gap-2 text-xs text-[#b7bdc6]">Duración
+                  <select v-model="plan.unidad" class="w-full rounded-lg border border-[#343941] bg-[#1b1e24] px-2 py-2 text-white"><option value="meses">Meses</option><option value="dias">Días</option></select>
+                  <input v-model.number="plan.duracion" :aria-label="`Duración en ${plan.unidad} de ${plan.nombre}`" type="number" min="1" :max="plan.unidad === 'dias' ? 3660 : 36" step="1" class="w-full rounded-lg border border-[#343941] bg-[#1b1e24] px-3 py-2.5 text-sm text-white outline-none focus:border-[#ee2046]" />
+                  <small>{{ textoDuracion(plan) }}</small>
                 </label>
                 <label class="grid gap-2 text-xs text-[#b7bdc6]">Precio MXN
                   <input v-model.number="plan.precio_pesos" type="number" min="0" step="0.01" class="w-full rounded-lg border border-[#343941] bg-[#1b1e24] px-3 py-2.5 text-sm text-white outline-none focus:border-[#ee2046]" />
@@ -319,8 +329,10 @@ onMounted(consultarEstadoAdmin)
               <label class="grid min-w-0 gap-2 text-xs text-[#b7bdc6]">Nombre
                 <input v-model="nuevo.nombre" maxlength="60" placeholder="Ej. Trimestral" class="w-full min-w-0 rounded-lg border border-[#343941] bg-[#1b1e24] px-3 py-2.5 text-sm text-white outline-none focus:border-[#ee2046]" />
               </label>
-              <label class="grid gap-2 text-xs text-[#b7bdc6]">Meses
-                <input v-model.number="nuevo.meses" type="number" min="1" max="36" class="w-full rounded-lg border border-[#343941] bg-[#1b1e24] px-3 py-2.5 text-sm text-white outline-none focus:border-[#ee2046]" />
+              <label class="grid gap-2 text-xs text-[#b7bdc6]">Duración
+                <select v-model="nuevo.unidad" class="w-full rounded-lg border border-[#343941] bg-[#1b1e24] px-2 py-2 text-white"><option value="meses">Meses</option><option value="dias">Días</option></select>
+                <input v-model.number="nuevo.duracion" :aria-label="`Duración en ${nuevo.unidad} del nuevo plan`" type="number" min="1" :max="nuevo.unidad === 'dias' ? 3660 : 36" step="1" class="w-full rounded-lg border border-[#343941] bg-[#1b1e24] px-3 py-2.5 text-sm text-white outline-none focus:border-[#ee2046]" />
+                <small>{{ textoDuracion(nuevo) }}</small>
               </label>
               <label class="grid gap-2 text-xs text-[#b7bdc6]">Precio MXN
                 <input v-model.number="nuevo.precio_pesos" type="number" min="0" step="0.01" class="w-full rounded-lg border border-[#343941] bg-[#1b1e24] px-3 py-2.5 text-sm text-white outline-none focus:border-[#ee2046]" />

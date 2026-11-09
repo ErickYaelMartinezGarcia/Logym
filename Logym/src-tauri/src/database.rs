@@ -115,12 +115,14 @@ fn asegurar_columna(conexion: &Connection, col: &str, def: &str) -> Result<(), S
     Ok(())
 }
 
+pub const VERSION_ESQUEMA: i64 = 2;
+
 pub fn inicializar_esquema(conexion: &Connection) -> Result<(), String> {
     let version: i64 = conexion.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(|e|e.to_string())?;
-    if version > 1 { return Err("La base pertenece a una versión más nueva de Logym; no se modificó".into()); }
+    if version > VERSION_ESQUEMA { return Err("La base pertenece a una versión más nueva de Logym; no se modificó".into()); }
     // Conservar un snapshot cifrado previo a migrar instalaciones existentes.
     #[cfg(windows)]
-    if version == 0 {
+    if version < VERSION_ESQUEMA {
         if let Some(ruta) = conexion.path().map(std::path::Path::new).filter(|p| p.with_extension("key.dpapi").is_file()) {
             let tablas: i64 = conexion.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'", [], |r|r.get(0)).map_err(|e|e.to_string())?;
             if tablas > 0 {
@@ -134,7 +136,7 @@ pub fn inicializar_esquema(conexion: &Connection) -> Result<(), String> {
     if tx.prepare("PRAGMA foreign_key_check").map_err(|e|e.to_string())?.exists([]).map_err(|e|e.to_string())? {
         return Err("Hay referencias huérfanas; la migración se revirtió sin borrar datos".into());
     }
-    tx.execute_batch("PRAGMA user_version=1").map_err(|e|e.to_string())?;
+    tx.pragma_update(None, "user_version", VERSION_ESQUEMA).map_err(|e|e.to_string())?;
     tx.commit().map_err(|e|e.to_string())
 }
 
@@ -193,6 +195,38 @@ fn migrar_esquema(conexion: &Connection) -> Result<(), String> {
         conexion.execute("ALTER TABLE tipos_membresia ADD COLUMN solo_alta INTEGER NOT NULL DEFAULT 0",[])
             .map_err(|e|e.to_string())?;
     }
+    let tiene_dias = conexion.prepare("PRAGMA table_info(tipos_membresia)").map_err(|e|e.to_string())?
+        .query_map([], |r| r.get::<_,String>(1)).map_err(|e|e.to_string())?
+        .collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?.iter().any(|n| n == "duracion_dias");
+    if !tiene_dias {
+        conexion.execute("ALTER TABLE tipos_membresia ADD COLUMN duracion_dias INTEGER CHECK(duracion_dias BETWEEN 1 AND 3660)", [])
+            .map_err(|e|e.to_string())?;
+    }
+    // Entradas ocasionales independientes: no inventar clientes ni alterar sus FK.
+    conexion.execute_batch(r#"
+        CREATE TABLE IF NOT EXISTS visitas_ocasionales (
+            id TEXT PRIMARY KEY NOT NULL,
+            nombre TEXT,
+            fecha_hora TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        );
+        CREATE TABLE IF NOT EXISTS pagos_visitas (
+            visita_id TEXT PRIMARY KEY NOT NULL REFERENCES visitas_ocasionales(id) ON DELETE RESTRICT,
+            total_centavos INTEGER NOT NULL CHECK(total_centavos=5000),
+            fecha_pago TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS asistencias_visitas (
+            visita_id TEXT PRIMARY KEY NOT NULL REFERENCES visitas_ocasionales(id) ON DELETE RESTRICT,
+            fecha_hora TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_pagos_visitas_fecha ON pagos_visitas(fecha_pago);
+        CREATE INDEX IF NOT EXISTS idx_asistencias_visitas_fecha ON asistencias_visitas(fecha_hora);
+        CREATE VIEW IF NOT EXISTS ingresos_todos AS
+            SELECT fecha_pago,total_centavos,membresia_centavos,inscripcion_centavos,0 AS visitas_centavos FROM pagos
+            UNION ALL
+            SELECT fecha_pago,total_centavos,0,0,total_centavos FROM pagos_visitas;
+        CREATE VIEW IF NOT EXISTS asistencias_todas AS
+            SELECT fecha_hora FROM asistencias UNION ALL SELECT fecha_hora FROM asistencias_visitas;
+    "#).map_err(|e|e.to_string())?;
     conexion.execute_batch(r#"
         CREATE TABLE IF NOT EXISTS administrador (
             id INTEGER PRIMARY KEY CHECK(id=1),

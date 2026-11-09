@@ -32,7 +32,7 @@ fn exportacion_cifrada_incluye_wal_y_no_sobrescribe_respaldo() {
     assert!(abrir_clave(&copy,"incorrecta").is_err());
     let saved = abrir_clave(&copy,password).unwrap();
     assert_eq!(counts(&saved),counts(&conn));
-    assert_eq!(saved.query_row("PRAGMA user_version",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+    assert_eq!(saved.query_row("PRAGMA user_version",[],|r|r.get::<_,i64>(0)).unwrap(),crate::database::VERSION_ESQUEMA);
     assert!(exportar(&conn,&copy,password).is_err());
     assert_eq!(std::fs::read(&copy).unwrap(),bytes);
 }

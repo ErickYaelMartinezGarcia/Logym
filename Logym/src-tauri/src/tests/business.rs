@@ -204,11 +204,11 @@ fn autenticacion_hash_salteado_y_configuracion_unica() {
 #[test]
 fn administrador_valida_planes_importes_y_limites() {
     let db=db();let pass="Prueba-admin-123";m::configurar_administrador(&db,pass).unwrap();
-    for (nombre,meses,precio) in [("",1,1),("a\nb",1,1),("Plan",0,1),("Plan",37,1),("Plan",1,-1),("Plan",1,100_000_001)] {assert!(m::actualizar_plan(&db,pass,None,nombre,meses,precio,true).is_err());}
-    assert!(m::actualizar_plan(&db,pass,Some(i64::MAX),"Ausente",1,1,true).is_err());
+    for (nombre,meses,precio) in [("",1,1),("a\nb",1,1),("Plan",0,1),("Plan",37,1),("Plan",1,-1),("Plan",1,100_000_001)] {assert!(m::actualizar_plan(&db,pass,None,nombre,meses,precio,true,None).is_err());}
+    assert!(m::actualizar_plan(&db,pass,Some(i64::MAX),"Ausente",1,1,true,None).is_err());
     for precio in [-1,i64::MAX] {assert!(m::actualizar_inscripcion(&db,pass,precio).is_err());}
-    m::actualizar_plan(&db,pass,None,"Plan prueba",36,100_000_000,true).unwrap();m::actualizar_inscripcion(&db,pass,0).unwrap();assert_eq!(m::inscripcion(&db).unwrap(),0);
-    let id=plan(&db,"Plan prueba");m::actualizar_plan(&db,pass,Some(id),"Plan prueba",1,0,false).unwrap();assert!(!m::listar(&db).unwrap().iter().any(|p|p.id==id));assert_eq!(m::listar_admin(&db,pass).unwrap().len(),6);
+    m::actualizar_plan(&db,pass,None,"Plan prueba",36,100_000_000,true,None).unwrap();m::actualizar_inscripcion(&db,pass,0).unwrap();assert_eq!(m::inscripcion(&db).unwrap(),0);
+    let id=plan(&db,"Plan prueba");m::actualizar_plan(&db,pass,Some(id),"Plan prueba",1,0,false,None).unwrap();assert!(!m::listar(&db).unwrap().iter().any(|p|p.id==id));assert_eq!(m::listar_admin(&db,pass).unwrap().len(),6);
 }
 
 #[test]

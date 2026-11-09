@@ -2,6 +2,26 @@ use super::*;
 use crate::test_support::cliente;
 
 #[test]
+fn alta_semanal_ambas_modalidades_cobro_historico_y_fin_inclusivo() {
+    use crate::test_support::*;
+    let db=db();
+    db.execute("INSERT INTO tipos_membresia(nombre,duracion_meses,duracion_dias,precio_centavos) VALUES('Semanal',1,7,12000)",[]).unwrap();
+    let plan_id=plan(&db,"Semanal");
+    for (sin_huella,inscripcion) in [(false,true),(true,false)] {
+        let mut datos=cliente(plan_id);datos.sin_huella=sin_huella;datos.incluir_inscripcion=inscripcion;
+        if sin_huella {datos.template_huella.clear();}
+        datos.fecha_inicio_membresia="2026-11-08".into();datos.fecha_fin_membresia="2026-12-08".into();
+        validar_alta(&mut datos).unwrap();completar_fin_alta(&mut datos,1,Some(7)).unwrap();
+        assert_eq!(datos.fecha_fin_membresia,"2026-11-14");
+        let id=crate::repositories::guardar_cliente_sin_duplicar(&db,datos,|_,_|Ok(false)).unwrap();
+        let pago:(i64,i64,i64)=db.query_row("SELECT membresia_centavos,inscripcion_centavos,total_centavos FROM pagos WHERE cliente_id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+        assert_eq!(pago,(12000,if inscripcion {15000}else{0},if inscripcion {27000}else{12000}));
+    }
+    db.execute("UPDATE tipos_membresia SET precio_centavos=99000 WHERE id=?1",[plan_id]).unwrap();
+    assert_eq!(db.query_row("SELECT sum(membresia_centavos) FROM pagos",[],|r|r.get::<_,i64>(0)).unwrap(),24000);
+}
+
+#[test]
 fn asistencia_manual_sin_password_reutiliza_validaciones() {
     use crate::test_support::*;
     let db = crate::test_support::db();
@@ -95,7 +115,7 @@ fn calendario_alta_28_29_30_31_bisiestos_siglos_y_cambios_de_anio() {
         ("2024-11-30",2,"2025-01-30"),("2024-06-28",1,"2024-07-28"),
     ] {
         let mut d=cliente(1);d.fecha_inicio_membresia=inicio.into();d.fecha_fin_membresia=String::new();
-        completar_fin_alta(&mut d,meses).unwrap();assert_eq!(d.fecha_fin_membresia,expected,"{inicio} + {meses}");
+        completar_fin_alta(&mut d,meses,None).unwrap();assert_eq!(d.fecha_fin_membresia,expected,"{inicio} + {meses}");
     }
 }
 
@@ -107,7 +127,7 @@ fn calendario_produccion_para_todos_los_planes_en_cada_dia_del_anio() {
             let mut date=chrono::NaiveDate::from_ymd_opt(year,1,1).unwrap();
             while date.year()==year {
                 let mut d=cliente(plan.id);d.fecha_inicio_membresia=date.to_string();
-                completar_fin_alta(&mut d,plan.duracion_meses).unwrap();
+                completar_fin_alta(&mut d,plan.duracion_meses,None).unwrap();
                 let fin=chrono::NaiveDate::parse_from_str(&d.fecha_fin_membresia,"%Y-%m-%d").unwrap();
                 let target=(date.month0() as i64+plan.duracion_meses) as u32;
                 assert_eq!((fin.year(),fin.month0()),(year+(target/12) as i32,target%12));

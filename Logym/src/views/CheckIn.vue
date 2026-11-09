@@ -1,5 +1,7 @@
 <script setup>
 import AppShell from '../components/AppShell.vue'
+import VisitaOcasional from '../components/VisitaOcasional.vue'
+import { duracionPlan } from '../services/duracionPlanes'
 import { useCheckIn } from '../composables/useCheckIn'
 
 const {
@@ -103,13 +105,13 @@ const {
 
                 <div v-if="!modalManual && clienteDetectado.estado_membresia === 'vencida'" class="renovacion-box">
                   <p class="muted renewal-label">Membresía vencida</p>
-                  <p class="renewal-copy">Puedes autorizar una nueva membresía mensual con fecha base de hoy.</p>
+                  <p class="renewal-copy">Puedes autorizar una nueva membresía con fecha base de hoy.</p>
                   <button v-if="!confirmandoRenovacion" class="secondary-button" @click="solicitarRenovacion">Renovar
                     membresía</button>
                   <div v-else class="renewal-confirmation">
                     <label>Plan para renovar (sin inscripción)
                       <select v-model="tipoMembresiaId" class="renewal-select">
-                        <option v-for="plan in tiposMembresia" :key="plan.id" :value="String(plan.id)">{{ plan.nombre }} — {{ (plan.precio_centavos / 100).toLocaleString("es-MX", {style:"currency",currency:"MXN"}) }}</option>
+                        <option v-for="plan in tiposMembresia" :key="plan.id" :value="String(plan.id)">{{ plan.nombre }} · {{ duracionPlan(plan) }} — {{ (plan.precio_centavos / 100).toLocaleString("es-MX", {style:"currency",currency:"MXN"}) }}</option>
                       </select>
                     </label>
                     <strong>¿Autorizar renovación?</strong>
@@ -136,10 +138,12 @@ const {
         </div>
       </section>
     </div>
+    <VisitaOcasional :bloqueada="modalAbierta" />
   </AppShell>
 </template>
 
 <style scoped>
+.checkin-layout { padding-bottom:90px; }
 .manual-search { text-align: left; padding-bottom: 20px; margin-bottom: 22px; border-bottom: 1px solid #343941; }
 .manual-search label { color: #aeb3bc; font-size: 12px; }
 .manual-search__controls { display: flex; gap: 8px; margin-top: 9px; }

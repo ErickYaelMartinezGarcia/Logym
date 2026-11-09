@@ -127,16 +127,16 @@ pub fn renovar_membresia(conexion: &Connection, cliente_id: i64, plan_id: i64) -
     // Serializa las renovaciones concurrentes para leer y extender el período
     // de forma atómica, sin perder días pagados.
     let tx = rusqlite::Transaction::new_unchecked(conexion, rusqlite::TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
-    let (nombre, precio, meses): (String, i64, i64) = tx.query_row(
-        "SELECT nombre,precio_centavos,duracion_meses FROM tipos_membresia WHERE id=?1 AND activo=1 AND solo_alta=0",
-        params![plan_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))
+    let (nombre, precio, meses, duracion_dias): (String, i64, i64, Option<i64>) = tx.query_row(
+        "SELECT nombre,precio_centavos,duracion_meses,duracion_dias FROM tipos_membresia WHERE id=?1 AND activo=1 AND solo_alta=0",
+        params![plan_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))
     ).map_err(|_| "Selecciona una membresía vigente".to_string())?;
     let dias = chrono::Local::now().date_naive();
     let anteriores: (String,String) = tx.query_row(
         "SELECT COALESCE(fecha_inicio_membresia,''),COALESCE(fecha_fin_membresia,'') FROM clientes WHERE id=?1 AND activo=1",
         [cliente_id], |r| Ok((r.get(0)?,r.get(1)?)),
     ).map_err(|_| "Cliente no encontrado o desactivado".to_string())?;
-    let (inicio_cliente, inicio_periodo, fin) = periodo_renovacion(dias, &anteriores.0, &anteriores.1, meses)?;
+    let (inicio_cliente, inicio_periodo, fin) = periodo_renovacion(dias, &anteriores.0, &anteriores.1, meses, duracion_dias)?;
     let inicio = inicio_cliente.to_string();
     let finaliza = fin.format("%Y-%m-%d").to_string();
     let changed = tx.execute("UPDATE clientes SET fecha_inicio_membresia=?1, fecha_fin_membresia=?2 WHERE id=?3 AND activo=1",
@@ -150,7 +150,7 @@ pub fn renovar_membresia(conexion: &Connection, cliente_id: i64, plan_id: i64) -
     Ok("Membresía renovada".into())
 }
 
-fn periodo_renovacion(hoy: chrono::NaiveDate, inicio: &str, fin: &str, meses: i64)
+fn periodo_renovacion(hoy: chrono::NaiveDate, inicio: &str, fin: &str, meses: i64, duracion_dias: Option<i64>)
     -> Result<(chrono::NaiveDate,chrono::NaiveDate,chrono::NaiveDate),String> {
     let inicio_guardado = if inicio.is_empty() { None } else {
         Some(chrono::NaiveDate::parse_from_str(inicio,"%Y-%m-%d")
@@ -162,11 +162,11 @@ fn periodo_renovacion(hoy: chrono::NaiveDate, inicio: &str, fin: &str, meses: i6
     };
     let fin_pagado = fin_guardado.filter(|d| *d >= hoy);
     let base = fin_pagado.unwrap_or(hoy);
-    let finaliza = base.checked_add_months(chrono::Months::new(meses as u32)).ok_or("Duración inválida")?;
+    let inicio_periodo = if fin_pagado.is_some() { base.succ_opt().ok_or("Fecha fuera de rango")? } else { hoy };
+    let finaliza = crate::membresias::fin_periodo(if duracion_dias.is_some() { inicio_periodo } else { base }, meses, duracion_dias)?;
     let inicio_cliente = if fin_pagado.is_some() {
         inicio_guardado.unwrap_or(hoy)
     } else { hoy };
-    let inicio_periodo = if fin_pagado.is_some() { base.succ_opt().ok_or("Fecha fuera de rango")? } else { hoy };
     Ok((inicio_cliente,inicio_periodo,finaliza))
 }
 
@@ -176,16 +176,16 @@ pub fn obtener_metricas(conexion: &Connection) -> Result<Metricas, String> {
         conn.query_row(sql, [], |row| row.get(0)).map_err(|e| e.to_string())
     }
     let total_clientes = count(conexion, "SELECT COUNT(*) FROM clientes WHERE activo = 1")?;
-    let asistencias_hoy = count(conexion, "SELECT COUNT(*) FROM asistencias WHERE date(fecha_hora) = date('now','localtime')")?;
+    let asistencias_hoy = count(conexion, "SELECT COUNT(*) FROM asistencias_todas WHERE date(fecha_hora) = date('now','localtime')")?;
     let nuevos_semana = count(conexion, "SELECT COUNT(*) FROM clientes WHERE activo = 1 AND date(fecha_registro) >= date('now','localtime','-6 days')")?;
     let huella_activas = count(conexion, "SELECT COUNT(*) FROM clientes WHERE activo = 1 AND COALESCE(template_huella,'') <> ''")?;
-    let asistencias_ultimos_7_dias = count(conexion, "SELECT COUNT(*) FROM asistencias WHERE date(fecha_hora) BETWEEN date('now','localtime','-6 days') AND date('now','localtime')")?;
+    let asistencias_ultimos_7_dias = count(conexion, "SELECT COUNT(*) FROM asistencias_todas WHERE date(fecha_hora) BETWEEN date('now','localtime','-6 days') AND date('now','localtime')")?;
     let dia_mas_concurrido: String = conexion.query_row(
-        "SELECT date(fecha_hora) FROM asistencias WHERE date(fecha_hora) BETWEEN date('now','localtime','-6 days') AND date('now','localtime') GROUP BY date(fecha_hora) ORDER BY COUNT(*) DESC, date(fecha_hora) DESC LIMIT 1",
+        "SELECT date(fecha_hora) FROM asistencias_todas WHERE date(fecha_hora) BETWEEN date('now','localtime','-6 days') AND date('now','localtime') GROUP BY date(fecha_hora) ORDER BY COUNT(*) DESC, date(fecha_hora) DESC LIMIT 1",
         [], |row| row.get(0)
     ).unwrap_or_else(|_| "Sin datos".to_string());
     let hora_mayor_afluencia: String = conexion.query_row(
-        "SELECT strftime('%H:00', fecha_hora) FROM asistencias WHERE date(fecha_hora) BETWEEN date('now','localtime','-6 days') AND date('now','localtime') GROUP BY strftime('%H', fecha_hora) ORDER BY COUNT(*) DESC, strftime('%H', fecha_hora) ASC LIMIT 1",
+        "SELECT strftime('%H:00', fecha_hora) FROM asistencias_todas WHERE date(fecha_hora) BETWEEN date('now','localtime','-6 days') AND date('now','localtime') GROUP BY strftime('%H', fecha_hora) ORDER BY COUNT(*) DESC, strftime('%H', fecha_hora) ASC LIMIT 1",
         [], |row| row.get(0)
     ).unwrap_or_else(|_| "Sin datos".to_string());
     Ok(Metricas { total_clientes, asistencias_hoy, nuevos_semana, huella_activas, asistencias_ultimos_7_dias, dia_mas_concurrido, hora_mayor_afluencia })

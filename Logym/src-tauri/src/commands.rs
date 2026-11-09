@@ -4,6 +4,24 @@ use crate::licencia;
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]
+pub async fn registrar_visita(app: AppHandle, operacion_id: String, nombre: String) -> Result<crate::visitas::Visita, String> {
+    let resultado = tauri::async_runtime::spawn_blocking(move || -> Result<crate::visitas::Visita, String> {
+        licencia::verificar(&app)?;
+        let conn = crate::database::abrir_db(&app)?;
+        let visita = crate::visitas::registrar(&conn, &operacion_id, &nombre)?;
+        let _ = app.emit_all("logym://datos-actualizados", "visita");
+        Ok(visita)
+    }).await;
+    match resultado {
+        Ok(Ok(visita)) => Ok(visita),
+        error => {
+            eprintln!("[VISITA] No se pudo completar la operación: {error:?}");
+            Err("No se pudo registrar la visita. Revisa el nombre e intenta nuevamente.".into())
+        }
+    }
+}
+
+#[tauri::command]
 pub fn buscar_clientes_checkin(app: AppHandle, consulta: String) -> Result<Vec<crate::models::ClienteCheckIn>, String> {
     licencia::verificar(&app)?;
     services::buscar_clientes_checkin(&app, consulta)
@@ -142,9 +160,9 @@ pub fn validar_password_admin(app: AppHandle, password: String) -> Result<(),Str
     crate::membresias::autenticar(&crate::database::abrir_db(&app)?,&password)
 }
 #[tauri::command]
-pub fn guardar_plan_admin(app: AppHandle, password: String, id: Option<i64>, nombre: String, meses: i64, precio_centavos: i64, activo: bool) -> Result<(),String> {
+pub fn guardar_plan_admin(app: AppHandle, password: String, id: Option<i64>, nombre: String, meses: i64, precio_centavos: i64, activo: bool, dias: Option<i64>) -> Result<(),String> {
     licencia::verificar(&app)?;
-    crate::membresias::actualizar_plan(&crate::database::abrir_db(&app)?,&password,id,&nombre,meses,precio_centavos,activo)?;
+    crate::membresias::actualizar_plan(&crate::database::abrir_db(&app)?,&password,id,&nombre,meses,precio_centavos,activo,dias)?;
     let _ = app.emit_all("logym://datos-actualizados","precios");
     Ok(())
 }

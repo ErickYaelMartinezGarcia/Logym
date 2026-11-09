@@ -6,9 +6,21 @@ pub struct TipoMembresia {
     pub id: i64,
     pub nombre: String,
     pub duracion_meses: i64,
+    pub duracion_dias: Option<i64>,
     pub precio_centavos: i64,
     pub activo: bool,
     pub solo_alta: bool,
+}
+
+/// Fin inclusivo para días; los meses conservan la semántica histórica.
+pub fn fin_periodo(inicio: chrono::NaiveDate, meses: i64, dias: Option<i64>) -> Result<chrono::NaiveDate, String> {
+    let fin = match dias {
+        Some(d) if (1..=3660).contains(&d) => inicio.checked_add_signed(chrono::Duration::days(d - 1)),
+        Some(_) => return Err("Duración inválida".into()),
+        None if (1..=36).contains(&meses) => inicio.checked_add_months(chrono::Months::new(meses as u32)),
+        None => return Err("Duración inválida".into()),
+    };
+    fin.ok_or_else(|| "Duración inválida".into())
 }
 
 #[derive(Serialize)]
@@ -17,6 +29,7 @@ pub struct ResumenIngresos {
     pub total_centavos: i64,
     pub membresias_centavos: i64,
     pub inscripciones_centavos: i64,
+    pub visitas_centavos: i64,
     pub numero_pagos: i64,
 }
 
@@ -35,6 +48,7 @@ pub struct ReporteFinanciero {
     pub total_centavos: i64,
     pub membresias_centavos: i64,
     pub inscripciones_centavos: i64,
+    pub visitas_centavos: i64,
     pub numero_pagos: i64,
     pub serie: Vec<IngresoDiario>,
 }
@@ -50,32 +64,32 @@ pub fn ingresos_rango(conn: &Connection, inicio: &str, fin: &str) -> Result<Repo
     if !fecha_valida(inicio) || !fecha_valida(fin) || inicio > fin {
         return Err("Selecciona un rango de fechas válido (inicio no posterior al fin)".into());
     }
-    let (total, membresias, inscripciones, pagos): (i64,i64,i64,i64) = conn.query_row(
-        "SELECT COALESCE(SUM(total_centavos),0), COALESCE(SUM(membresia_centavos),0), COALESCE(SUM(inscripcion_centavos),0), COUNT(*) FROM pagos WHERE date(fecha_pago) BETWEEN ?1 AND ?2",
-        params![inicio, fin], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))
+    let (total, membresias, inscripciones, pagos, visitas): (i64,i64,i64,i64,i64) = conn.query_row(
+        "SELECT COALESCE(SUM(total_centavos),0), COALESCE(SUM(membresia_centavos),0), COALESCE(SUM(inscripcion_centavos),0), COUNT(*), COALESCE(SUM(visitas_centavos),0) FROM ingresos_todos WHERE date(fecha_pago) BETWEEN ?1 AND ?2",
+        params![inicio, fin], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))
     ).map_err(|e|e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT date(fecha_pago), SUM(total_centavos) FROM pagos WHERE date(fecha_pago) BETWEEN ?1 AND ?2 GROUP BY date(fecha_pago) ORDER BY date(fecha_pago)"
+        "SELECT date(fecha_pago), SUM(total_centavos) FROM ingresos_todos WHERE date(fecha_pago) BETWEEN ?1 AND ?2 GROUP BY date(fecha_pago) ORDER BY date(fecha_pago)"
     ).map_err(|e|e.to_string())?;
     let serie = stmt.query_map(params![inicio,fin], |r| Ok(IngresoDiario { fecha:r.get(0)?, total_centavos:r.get(1)? }))
         .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
-    Ok(ReporteFinanciero { fecha_inicio:inicio.into(), fecha_fin:fin.into(), total_centavos:total, membresias_centavos:membresias, inscripciones_centavos:inscripciones, numero_pagos:pagos, serie })
+    Ok(ReporteFinanciero { fecha_inicio:inicio.into(), fecha_fin:fin.into(), total_centavos:total, membresias_centavos:membresias, inscripciones_centavos:inscripciones, visitas_centavos:visitas, numero_pagos:pagos, serie })
 }
 
 pub fn listar(conn: &Connection) -> Result<Vec<TipoMembresia>, String> {
-    let mut stmt = conn.prepare("SELECT id,nombre,duracion_meses,precio_centavos,activo,solo_alta FROM tipos_membresia WHERE activo=1 ORDER BY nombre")
+    let mut stmt = conn.prepare("SELECT id,nombre,duracion_meses,precio_centavos,activo,solo_alta,duracion_dias FROM tipos_membresia WHERE activo=1 ORDER BY nombre")
         .map_err(|e| e.to_string())?;
     let resultado = stmt.query_map([], |r| Ok(TipoMembresia {
-        id: r.get(0)?, nombre: r.get(1)?, duracion_meses: r.get(2)?, precio_centavos: r.get(3)?, activo: r.get::<_,i64>(4)? != 0, solo_alta: r.get::<_,i64>(5)? != 0,
+        id: r.get(0)?, nombre: r.get(1)?, duracion_meses: r.get(2)?, precio_centavos: r.get(3)?, activo: r.get::<_,i64>(4)? != 0, solo_alta: r.get::<_,i64>(5)? != 0, duracion_dias: r.get(6)?,
     })).map_err(|e| e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e| e.to_string());
     resultado
 }
 
 pub fn listar_admin(conn: &Connection, password: &str) -> Result<Vec<TipoMembresia>,String> {
     autenticar(conn,password)?;
-    let mut stmt = conn.prepare("SELECT id,nombre,duracion_meses,precio_centavos,activo,solo_alta FROM tipos_membresia ORDER BY nombre").map_err(|e|e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id,nombre,duracion_meses,precio_centavos,activo,solo_alta,duracion_dias FROM tipos_membresia ORDER BY nombre").map_err(|e|e.to_string())?;
     let resultado = stmt.query_map([],|r| Ok(TipoMembresia {
-        id:r.get(0)?,nombre:r.get(1)?,duracion_meses:r.get(2)?,precio_centavos:r.get(3)?,activo:r.get::<_,i64>(4)? != 0,solo_alta:r.get::<_,i64>(5)? != 0
+        id:r.get(0)?,nombre:r.get(1)?,duracion_meses:r.get(2)?,precio_centavos:r.get(3)?,activo:r.get::<_,i64>(4)? != 0,solo_alta:r.get::<_,i64>(5)? != 0,duracion_dias:r.get(6)?
     })).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string());
     resultado
 }
@@ -93,11 +107,11 @@ pub fn ingresos(conn: &Connection, periodo: &str) -> Result<ResumenIngresos, Str
         "anual" => "date('now','localtime','start of year')",
         _ => return Err("Periodo inválido".into()),
     };
-    let sql = format!("SELECT COALESCE(SUM(total_centavos),0),COALESCE(SUM(membresia_centavos),0),COALESCE(SUM(inscripcion_centavos),0),COUNT(*) FROM pagos WHERE date(fecha_pago) BETWEEN {inicio} AND date('now','localtime')");
+    let sql = format!("SELECT COALESCE(SUM(total_centavos),0),COALESCE(SUM(membresia_centavos),0),COALESCE(SUM(inscripcion_centavos),0),COUNT(*),COALESCE(SUM(visitas_centavos),0) FROM ingresos_todos WHERE date(fecha_pago) BETWEEN {inicio} AND date('now','localtime')");
     conn.query_row(&sql, params![], |r| Ok(ResumenIngresos {
         periodo: periodo.to_string(), total_centavos: r.get(0)?,
         membresias_centavos: r.get(1)?, inscripciones_centavos: r.get(2)?,
-        numero_pagos: r.get(3)?,
+        numero_pagos: r.get(3)?, visitas_centavos: r.get(4)?,
     })).map_err(|e| e.to_string())
 }
 
@@ -138,19 +152,21 @@ pub fn autenticar(conn: &Connection, password: &str) -> Result<(), String> {
         .map_err(|_| "Contraseña incorrecta".to_string())
 }
 
-pub fn actualizar_plan(conn: &Connection, password: &str, id: Option<i64>, nombre: &str, meses: i64, precio: i64, activo: bool) -> Result<(), String> {
+pub fn actualizar_plan(conn: &Connection, password: &str, id: Option<i64>, nombre: &str, meses: i64, precio: i64, activo: bool, dias: Option<i64>) -> Result<(), String> {
     autenticar(conn,password)?;
     if nombre.trim().is_empty() || nombre.chars().count() > 60 || nombre.chars().any(char::is_control)
-        || !(1..=36).contains(&meses) || !(0..=100_000_000).contains(&precio) {
+        || !(1..=36).contains(&meses) || dias.map_or(false, |d| !(1..=3660).contains(&d) || meses != 1) || !(0..=100_000_000).contains(&precio) {
         return Err("Datos de membresía inválidos".into());
     }
     if let Some(id) = id {
-        let n = conn.execute("UPDATE tipos_membresia SET nombre=?1,duracion_meses=?2,precio_centavos=?3,activo=?4 WHERE id=?5",
-            params![nombre.trim(),meses,precio,activo as i32,id]).map_err(|e|e.to_string())?;
+        let n = conn.execute("UPDATE tipos_membresia SET nombre=?1,duracion_meses=?2,precio_centavos=?3,activo=?4,duracion_dias=?6 WHERE id=?5",
+            params![nombre.trim(),meses,precio,activo as i32,id,dias]).map_err(|e|e.to_string())?;
         if n == 0 { return Err("Plan no encontrado".into()); }
     } else {
-        conn.execute("INSERT INTO tipos_membresia(nombre,duracion_meses,precio_centavos,activo) VALUES(?1,?2,?3,?4)",
-            params![nombre.trim(),meses,precio,activo as i32]).map_err(|e|e.to_string())?;
+        // La columna histórica sigue siendo positiva por compatibilidad. En
+        // planes en días, duracion_dias tiene precedencia y meses vale 1.
+        conn.execute("INSERT INTO tipos_membresia(nombre,duracion_meses,precio_centavos,activo,duracion_dias) VALUES(?1,?2,?3,?4,?5)",
+            params![nombre.trim(),meses,precio,activo as i32,dias]).map_err(|e|e.to_string())?;
     }
     Ok(())
 }
@@ -170,7 +186,7 @@ pub fn asistencias_periodo(conn: &Connection, periodo: &str) -> Result<i64,Strin
         "mes" => "date('now','localtime','start of month')",
         _ => return Err("Periodo inválido".into()),
     };
-    conn.query_row(&format!("SELECT COUNT(*) FROM asistencias WHERE date(fecha_hora) BETWEEN {inicio} AND date('now','localtime')"),[],|r|r.get(0))
+    conn.query_row(&format!("SELECT COUNT(*) FROM asistencias_todas WHERE date(fecha_hora) BETWEEN {inicio} AND date('now','localtime')"),[],|r|r.get(0))
         .map_err(|e|e.to_string())
 }
 
@@ -184,7 +200,7 @@ pub struct AsistenciaDiaria {
 /// Se agregan asistencias, sin exponer datos personales.
 pub fn asistencias_por_hora_hoy(conn: &Connection) -> Result<Vec<AsistenciaDiaria>, String> {
     let mut stmt = conn.prepare(
-        "SELECT strftime('%H', fecha_hora), COUNT(*) FROM asistencias WHERE date(fecha_hora) = date('now','localtime') GROUP BY strftime('%H', fecha_hora) ORDER BY 1"
+        "SELECT strftime('%H', fecha_hora), COUNT(*) FROM asistencias_todas WHERE date(fecha_hora) = date('now','localtime') GROUP BY strftime('%H', fecha_hora) ORDER BY 1"
     ).map_err(|e|e.to_string())?;
     let filas = stmt.query_map([], |r| Ok(AsistenciaDiaria { fecha: r.get(0)?, total: r.get(1)? }))
         .map_err(|e|e.to_string())?;
@@ -199,7 +215,7 @@ pub fn asistencias_diarias(conn: &Connection, periodo: &str) -> Result<Vec<Asist
         "mes" => ("date(\'now\',\'localtime\',\'start of year\')", "strftime(\'%Y-%m\',fecha_hora)"),
         _ => return Err("Periodo inválido".into()),
     };
-    let consulta = format!("SELECT {agrupacion}, COUNT(*) FROM asistencias WHERE date(fecha_hora) BETWEEN {inicio} AND date(\'now\',\'localtime\') GROUP BY {agrupacion} ORDER BY {agrupacion}");
+    let consulta = format!("SELECT {agrupacion}, COUNT(*) FROM asistencias_todas WHERE date(fecha_hora) BETWEEN {inicio} AND date(\'now\',\'localtime\') GROUP BY {agrupacion} ORDER BY {agrupacion}");
     let mut sentencia = conn.prepare(&consulta).map_err(|e| e.to_string())?;
     let filas = sentencia.query_map([], |fila| Ok(AsistenciaDiaria { fecha: fila.get(0)?, total: fila.get(1)? })).map_err(|e| e.to_string())?;
     let mut datos = Vec::new();

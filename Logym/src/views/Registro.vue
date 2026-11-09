@@ -1,6 +1,7 @@
 <script setup>
 import AppShell from '../components/AppShell.vue'
 import { useRegistroCliente } from '../composables/useRegistroCliente'
+import { duracionPlan } from '../services/duracionPlanes'
 
 function soloNumeros(event, campo) {
   const limpio = event.target.value.replace(/\D/g, '').slice(0, 10)
@@ -40,7 +41,7 @@ const {
           <label class="field-label">Tipo de membresía
             <select v-model="tipoMembresiaId" class="plan-select" required>
               <option value="" disabled>Selecciona un plan</option>
-              <option v-for="plan in tiposMembresia" :key="plan.id" :value="String(plan.id)">{{ plan.nombre }} — {{ (plan.precio_centavos / 100).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) }}</option>
+              <option v-for="plan in tiposMembresia" :key="plan.id" :value="String(plan.id)">{{ plan.nombre }} · {{ duracionPlan(plan) }} — {{ (plan.precio_centavos / 100).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) }}</option>
             </select>
           </label>
           <label class="field-label">¿Incluir inscripción?

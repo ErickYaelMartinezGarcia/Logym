@@ -2,6 +2,24 @@ use super::*;
 use crate::test_support::*;
 
 #[test]
+fn migracion_version_uno_conserva_catalogo_pagos_y_agrega_dias_y_visitas() {
+    let temp=TempDb::new();let db=temp.connect();inicializar_esquema(&db).unwrap();
+    vigente(&db);
+    db.execute("UPDATE tipos_membresia SET precio_centavos=12345 WHERE nombre='Mensual'",[]).unwrap();
+    let antes=counts(&db);
+    db.execute_batch("DROP VIEW ingresos_todos; DROP VIEW asistencias_todas; DROP TABLE pagos_visitas; DROP TABLE asistencias_visitas; DROP TABLE visitas_ocasionales; ALTER TABLE tipos_membresia DROP COLUMN duracion_dias; PRAGMA user_version=1;").unwrap();
+    drop(db);
+    let db=temp.connect();inicializar_esquema(&db).unwrap();inicializar_esquema(&db).unwrap();
+    assert_eq!(counts(&db),antes);
+    assert_eq!(db.query_row("PRAGMA user_version",[],|r|r.get::<_,i64>(0)).unwrap(),VERSION_ESQUEMA);
+    assert_eq!(db.query_row("SELECT duracion_meses,duracion_dias,precio_centavos FROM tipos_membresia WHERE nombre='Mensual'",[],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,Option<i64>>(1)?,r.get::<_,i64>(2)?))).unwrap(),(1,None,12345));
+    assert_eq!(db.query_row("SELECT membresia_centavos FROM pagos",[],|r|r.get::<_,i64>(0)).unwrap(),35000);
+    crate::visitas::registrar(&db,&"f".repeat(32),"").unwrap();
+    assert_eq!(db.query_row("PRAGMA integrity_check",[],|r|r.get::<_,String>(0)).unwrap(),"ok");
+    assert!(!db.prepare("PRAGMA foreign_key_check").unwrap().exists([]).unwrap());
+}
+
+#[test]
 fn esquema_real_restricciones_fk_importes_y_catalogo() {
     let db=db();let id=vigente(&db);
     assert_eq!(db.query_row("PRAGMA foreign_keys",[],|r|r.get::<_,i64>(0)).unwrap(),1);

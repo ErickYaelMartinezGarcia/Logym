@@ -39,7 +39,7 @@
         assert_eq!(counts(&db), (3,3,3,1));
         assert_eq!(db.query_row("SELECT count(*) FROM clientes WHERE template_huella IS NULL", [], |r| r.get::<_,i64>(0)).unwrap(), 2);
         assert_eq!(db.query_row("SELECT sum(total_centavos) FROM pagos", [], |r| r.get::<_,i64>(0)).unwrap(), 150000);
-        assert_eq!(db.query_row("PRAGMA user_version", [], |r| r.get::<_,i64>(0)).unwrap(), 1);
+        assert_eq!(db.query_row("PRAGMA user_version", [], |r| r.get::<_,i64>(0)).unwrap(),crate::database::VERSION_ESQUEMA);
     }
 
     #[test]
@@ -104,7 +104,7 @@
                 (invalida, "2020-01-01", "inicio"),
                 ("2024-01-01", invalida, "vencimiento"),
             ] {
-                let error = periodo_renovacion(hoy, inicio, fin, 1).unwrap_err();
+                let error = periodo_renovacion(hoy, inicio, fin,1,None).unwrap_err();
                 assert!(error.contains(campo), "{error}");
             }
         }
@@ -150,9 +150,9 @@
     fn renovacion_fechas_ausentes_conserva_comportamiento() {
         let hoy = chrono::NaiveDate::from_ymd_opt(2026, 11, 6).unwrap();
         let esperado = chrono::NaiveDate::from_ymd_opt(2026, 12, 6).unwrap();
-        assert_eq!(periodo_renovacion(hoy, "", "", 1).unwrap(), (hoy, hoy, esperado));
+        assert_eq!(periodo_renovacion(hoy, "", "",1,None).unwrap(), (hoy, hoy, esperado));
         let fin = chrono::NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
-        assert_eq!(periodo_renovacion(hoy, "", "2026-12-01", 1).unwrap(),
+        assert_eq!(periodo_renovacion(hoy, "", "2026-12-01",1,None).unwrap(),
             (hoy, fin.succ_opt().unwrap(), chrono::NaiveDate::from_ymd_opt(2027, 1, 1).unwrap()));
     }
 
@@ -167,7 +167,7 @@
             ("2024-02-29","2023-01-01","2023-12-31",1,"2024-03-29"),
         ] {
             let parse=|s|chrono::NaiveDate::parse_from_str(s,"%Y-%m-%d").unwrap();
-            let (inicio_cliente,inicio_hist,finaliza)=periodo_renovacion(parse(hoy),inicio,fin,meses).unwrap();
+            let (inicio_cliente,inicio_hist,finaliza)=periodo_renovacion(parse(hoy),inicio,fin,meses,None).unwrap();
             assert_eq!(finaliza,parse(esperado));
             if fin>=hoy { assert_eq!(inicio_cliente,parse(inicio)); assert_eq!(inicio_hist,parse(fin).succ_opt().unwrap()); }
             else { assert_eq!(inicio_cliente,parse(hoy));assert_eq!(inicio_hist,parse(hoy)); }
@@ -215,3 +215,33 @@
         };
         assert!(actualizar_cliente(&conn, 1, datos).is_err());
     }
+#[test]
+fn semanal_renovacion_anticipada_vencida_y_limites_de_acceso() {
+    use crate::test_support::*;
+    let db=db();
+    db.execute("INSERT INTO tipos_membresia(nombre,duracion_meses,duracion_dias,precio_centavos) VALUES('Semanal',1,7,12000)",[]).unwrap();
+    let plan_id=plan(&db,"Semanal");
+    let id=vigente(&db);
+    let hoy=chrono::Local::now().date_naive();
+    for (inicio,fin,esperado_inicio,esperado_fin) in [
+        ("2026-11-08","2026-11-14","2026-11-08","2026-11-21"),
+        ("2026-10-01","2026-10-07","2026-11-10","2026-11-16"),
+        ("2026-11-10","2026-11-10","2026-11-10","2026-11-17")
+    ] {
+        let fecha=chrono::NaiveDate::from_ymd_opt(2026,11,10).unwrap();
+        let (a,b,c)=periodo_renovacion(fecha,inicio,fin,1,Some(7)).unwrap();
+        assert_eq!(a.to_string(),esperado_inicio);assert_eq!(c.to_string(),esperado_fin);
+        assert_eq!((c-b).num_days(),6);
+    }
+    db.execute("UPDATE clientes SET fecha_inicio_membresia=date('now','localtime','-6 days'),fecha_fin_membresia=date('now','localtime') WHERE id=?1",[id]).unwrap();
+    registrar_asistencia(&db,id).unwrap(); // último día incluido
+    renovar_membresia(&db,id,plan_id).unwrap();
+    let fin:String=db.query_row("SELECT fecha_fin_membresia FROM clientes WHERE id=?1",[id],|r|r.get(0)).unwrap();
+    assert_eq!(fin,(hoy+chrono::Duration::days(7)).to_string());
+    assert_eq!(db.query_row("SELECT inscripcion_centavos FROM pagos WHERE tipo='renovacion'",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+    db.execute("UPDATE clientes SET fecha_fin_membresia=date('now','localtime','-1 day') WHERE id=?1",[id]).unwrap();
+    assert!(registrar_asistencia(&db,id).unwrap_err().contains("vencida"));
+    renovar_membresia(&db,id,plan_id).unwrap();
+    let fechas:(String,String)=db.query_row("SELECT fecha_inicio_membresia,fecha_fin_membresia FROM clientes WHERE id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(fechas,(hoy.to_string(),(hoy+chrono::Duration::days(6)).to_string()));
+}

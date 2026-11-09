@@ -4,6 +4,70 @@ import { readFile } from 'node:fs/promises'
 import { SourceTextModule, SyntheticModule, createContext } from 'node:vm'
 import * as Vue from 'vue'
 import { MENSAJES_LECTOR, mensajeErrorLector, detalleLectorPublico } from '../src/services/mensajesLector.js'
+import { duracionPlan, fechaFinPlan } from '../src/services/duracionPlanes.js'
+
+test('Duraciones: siete días inclusivos, bisiestos y meses históricos', () => {
+  for (const [inicio, plan, fin] of [
+    ['2026-11-08', { duracion_dias:7 }, '2026-11-14'],
+    ['2024-02-26', { duracion_dias:7 }, '2024-03-03'],
+    ['2026-12-29', { duracion_dias:7 }, '2027-01-04'],
+    ['2026-11-08', { duracion_dias:1 }, '2026-11-08'],
+    ['2024-01-31', { duracion_meses:1 }, '2024-02-29']
+  ]) assert.equal(fechaFinPlan(inicio,plan),fin)
+  assert.equal(duracionPlan({duracion_dias:7}),'7 días')
+  assert.equal(duracionPlan({duracion_meses:1}),'1 mes')
+  assert.equal(fechaFinPlan('2026-11-08',{duracion_dias:0}),'')
+})
+
+test('Visita: nombre opcional, una petición por doble clic y nueva entrada con otro ID', async () => {
+  let completar
+  const envios = []
+  const f = await fixture('composables/useVisita.js', {api:{registrarVisita:async(id,nombre)=>{
+    envios.push({id,nombre}); await new Promise(resolve=>{completar=resolve}); return {id,total_centavos:5000}
+  }}})
+  const s=f.ns.useVisita(); s.abrir()
+  const primera=s.guardar(); await s.guardar()
+  assert.equal(envios.length,1); assert.equal(s.guardando.value,true)
+  assert.equal(envios[0].nombre,''); assert.match(envios[0].id,/^[a-f0-9]{32}$/)
+  completar(); assert.equal((await primera).total_centavos,5000)
+  s.abrir(); s.nombre.value=' Visitante sintético '
+  const otra=s.guardar(); completar(); await otra
+  assert.notEqual(envios[0].id,envios[1].id); assert.equal(envios[1].nombre,'Visitante sintético')
+})
+
+test('Visita: respuesta fallida conserva ID y nombre para reintentar sin exponer diagnósticos', async () => {
+  const envios=[]
+  const f=await fixture('composables/useVisita.js',{api:{registrarVisita:async(id,nombre)=>{
+    envios.push({id,nombre}); if(envios.length===1)throw Error('SQLCipher C:\\privado\\gym.db: 59'); return {id,total_centavos:5000}
+  }}})
+  const s=f.ns.useVisita();s.nombre.value='Sintético'; assert.equal(await s.guardar(),null)
+  assert.equal(s.guardando.value,false);assert.equal(s.porConfirmar.value,true)
+  assert.ok(!/SQLCipher|privado|59|gym\.db/.test(s.mensaje.value));assert.equal(f.erroresTecnicos.length,1)
+  s.abrir(); assert.equal(s.nombre.value,'Sintético');await s.guardar()
+  assert.deepEqual(envios[0],envios[1]);assert.equal(s.porConfirmar.value,false)
+})
+
+test('Visita: un reinicio conserva solo el ID pendiente y recupera la operación', async () => {
+  const data=new Map();const storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)}
+  const f=await fixture('composables/useVisita.js',{storage,api:{registrarVisita:async()=>{throw Error('respuesta perdida')}}})
+  const s=f.ns.useVisita();s.nombre.value='Nombre privado';await s.guardar()
+  assert.equal(data.size,1);const id=[...data.values()][0];assert.match(id,/^[a-f0-9]{32}$/);assert.ok(!JSON.stringify([...data]).includes('Nombre privado'))
+  const g=await fixture('composables/useVisita.js',{storage});const t=g.ns.useVisita();t.abrir()
+  assert.equal(t.porConfirmar.value,true);await t.guardar()
+  assert.deepEqual(g.calls[0],['visita',id,'']);assert.equal(data.size,0)
+})
+
+test('Registro semanal con y sin huella conserva inscripción opcional y fecha inclusiva', async () => {
+  for(const sinHuella of [false,true]){
+    const f=await registro({api:{listarTiposMembresia:async()=>[{id:7,nombre:'Semanal',duracion_meses:1,duracion_dias:7,precio_centavos:12000}]}})
+    const s=f.state;s.sinHuella.value=sinHuella;s.nombre.value='Semanal sintético';s.fechaRegistro.value='2026-11-08';s.fechaInicioMembresia.value='2026-11-08';s.tipoMembresiaId.value='7';s.incluirInscripcion.value=false
+    await Vue.nextTick();assert.equal(s.fechaFinMembresia.value,'2026-11-14')
+    if(!sinHuella){await s.capturarHuellaCliente(1);await s.capturarHuellaCliente(2)}
+    await s.guardar();const envio=f.calls.find(([c])=>c==='guardar')[1]
+    assert.equal(envio.fechaFinMembresia,'2026-11-14');assert.equal(envio.incluirInscripcion,false);assert.equal(envio.sinHuella,sinHuella)
+    await f.unmount()
+  }
+})
 
 // Ejecuta los módulos de producción. Se simulan únicamente sus fronteras:
 // IPC, cámara, router, lifecycle y reloj; no se replica la lógica de negocio.
@@ -18,6 +82,7 @@ async function fixture(file, overrides = {}) {
     obtenerPrecioInscripcion: async () => 15000,
     buscarClientesCheckin: async () => [],
     registrarAsistencia: async id => { calls.push(['asistencia', id]); return 'Asistencia registrada' },
+    registrarVisita: async (id, nombre) => { calls.push(['visita', id, nombre]); return { id, total_centavos: 5000 } },
     capturarHuella: async () => 'ab'.repeat(400),
     compararHuella: async () => true,
     guardarCliente: async d => { calls.push(['guardar', d]) },
@@ -33,7 +98,7 @@ async function fixture(file, overrides = {}) {
     '@tauri-apps/api/tauri': { invoke: async () => ({ estado: 'recuperando', revision: 1, sdk_inicializado: true, captura_comprobada: false }), ...overrides.ipc },
   }
   const context = createContext({
-    navigator: overrides.navigator || {},
+    navigator: overrides.navigator || {}, crypto: globalThis.crypto, localStorage: overrides.storage,
     console: { error: (...args) => erroresTecnicos.push(args), warn: () => {}, log: () => {} },
     Date: class extends Date { static now() { return now } },
     setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, at: now + ms }); return id },
@@ -42,8 +107,8 @@ async function fixture(file, overrides = {}) {
   const source = new URL(`../src/${file}`, import.meta.url)
   const module = new SourceTextModule(await readFile(source, 'utf8'), { context, identifier: source.href })
   await module.link(async specifier => {
-    if (specifier === '../services/mensajesLector') {
-      const helper = new SourceTextModule(await readFile(new URL('../src/services/mensajesLector.js', import.meta.url), 'utf8'), { context })
+    if (['../services/mensajesLector', '../services/duracionPlanes'].includes(specifier)) {
+      const helper = new SourceTextModule(await readFile(new URL(`../src/services/${specifier.split('/').pop()}.js`, import.meta.url), 'utf8'), { context })
       await helper.link(() => { throw Error('El traductor debe ser independiente') })
       return helper
     }

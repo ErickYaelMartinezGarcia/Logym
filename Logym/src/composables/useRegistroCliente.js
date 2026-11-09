@@ -2,6 +2,7 @@ import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { capturarHuella, compararHuella, guardarCliente, inicializarBaseDeDatos, pausarLectorGlobal, listarTiposMembresia, obtenerPrecioInscripcion } from '../services/tauriApi'
 import { useCamera } from './useCamera'
 import { mensajeErrorLector, mensajeErrorAlta } from '../services/mensajesLector'
+import { fechaFinPlan } from '../services/duracionPlanes'
 
 export function useRegistroCliente() {
   const tiposMembresia = ref([])
@@ -43,14 +44,7 @@ export function useRegistroCliente() {
   watch([tipoMembresiaId, fechaInicioMembresia, tiposMembresia], () => {
     const plan = tiposMembresia.value.find(p => String(p.id) === tipoMembresiaId.value)
     if (!plan || !fechaInicioMembresia.value) return
-    const inicio = new Date(`${fechaInicioMembresia.value}T12:00:00`)
-    if (Number.isNaN(inicio.getTime())) return
-    const diaOriginal = inicio.getDate()
-    inicio.setDate(1)
-    inicio.setMonth(inicio.getMonth() + plan.duracion_meses)
-    const ultimoDia = new Date(inicio.getFullYear(), inicio.getMonth() + 1, 0).getDate()
-    inicio.setDate(Math.min(diaOriginal, ultimoDia))
-    fechaFinMembresia.value = fechaLocal(inicio)
+    fechaFinMembresia.value = fechaFinPlan(fechaInicioMembresia.value, plan)
   })
 
   watch(sinHuella, () => {

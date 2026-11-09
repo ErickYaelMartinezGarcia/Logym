@@ -8,6 +8,7 @@ mod lector_estado;
 mod lector_mensajes;
 mod licencia;
 mod membresias;
+mod visitas;
 mod repositories;
 mod secugen;
 mod services;
@@ -85,6 +86,7 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::registrar_visita,
             commands::listar_planes_admin, commands::admin_configurado, commands::crear_password_admin, commands::validar_password_admin,
             commands::guardar_plan_admin, commands::guardar_inscripcion_admin, commands::obtener_asistencias_periodo, commands::obtener_asistencias_diarias, commands::obtener_asistencias_por_hora,commands::obtener_asistencias_periodo, commands::obtener_asistencias_diarias,
             commands::listar_tipos_membresia, commands::obtener_precio_inscripcion, commands::resumen_ingresos, commands::reporte_financiero,

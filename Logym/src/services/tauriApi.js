@@ -48,3 +48,4 @@ export const obtenerAsistenciasPorHora = () => ejecutar('obtener_asistencias_por
 export const obtenerAsistenciasDiarias = (periodo) => ejecutar('obtener_asistencias_diarias', { periodo })
 
 export const buscarClientesCheckin = (consulta) => ejecutar('buscar_clientes_checkin', { consulta })
+export const registrarVisita = (operacionId, nombre) => ejecutar('registrar_visita', { operacionId, nombre })

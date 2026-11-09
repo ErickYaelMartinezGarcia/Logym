@@ -75,7 +75,7 @@ pub fn restaurar(origen: &Path, db: &Path, password: &str, admin: &str) -> Resul
     // Autenticar contra la copia permite recuperar en otro equipo/perfil.
     crate::membresias::autenticar(&backup,admin)?;
     let version: i64 = backup.query_row("PRAGMA user_version",[],|r|r.get(0)).map_err(|e|e.to_string())?;
-    if version>1 { return Err("Respaldo de una versión más nueva; no se modificó el destino".into()); }
+    if version>crate::database::VERSION_ESQUEMA { return Err("Respaldo de una versión más nueva; no se modificó el destino".into()); }
     if db.exists() {
         let actual = crate::database::abrir_cifrada(db)?;
         crate::membresias::autenticar(&actual,admin)?;

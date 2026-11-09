@@ -16,11 +16,11 @@ pub fn guardar_cliente(app: &AppHandle, mut datos: DatosCliente) -> Result<i64, 
     validar_alta(&mut datos)?;
     let conn = database::abrir_db(app)?;
     let plan_id = datos.tipo_membresia_id.ok_or("Selecciona un tipo de membresía")?;
-    let meses: i64 = conn.query_row(
-        "SELECT duracion_meses FROM tipos_membresia WHERE id=?1 AND activo=1",
-        params![plan_id], |r| r.get(0)
+    let (meses, dias): (i64, Option<i64>) = conn.query_row(
+        "SELECT duracion_meses,duracion_dias FROM tipos_membresia WHERE id=?1 AND activo=1",
+        params![plan_id], |r| Ok((r.get(0)?,r.get(1)?))
     ).map_err(|_| "La membresía seleccionada no está disponible".to_string())?;
-    completar_fin_alta(&mut datos, meses)?;
+    completar_fin_alta(&mut datos, meses, dias)?;
     if datos.sin_huella {
         return repositories::guardar_cliente_sin_duplicar(&conn, datos, |_, _| {
             Err("No debe compararse biometría en un alta sin huella".into())
@@ -74,11 +74,10 @@ fn validar_alta(datos: &mut DatosCliente) -> Result<(), String> {
     Ok(())
 }
 
-fn completar_fin_alta(datos: &mut DatosCliente, meses: i64) -> Result<(), String> {
+fn completar_fin_alta(datos: &mut DatosCliente, meses: i64, dias: Option<i64>) -> Result<(), String> {
     let inicio = chrono::NaiveDate::parse_from_str(&datos.fecha_inicio_membresia, "%Y-%m-%d")
         .map_err(|_| "Fecha inicial inválida")?;
-    let fin = inicio.checked_add_months(chrono::Months::new(meses as u32))
-        .ok_or("Duración de membresía inválida")?;
+    let fin = crate::membresias::fin_periodo(inicio, meses, dias)?;
     datos.fecha_fin_membresia = fin.format("%Y-%m-%d").to_string();
     Ok(())
 }
