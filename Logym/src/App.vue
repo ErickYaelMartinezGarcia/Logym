@@ -6,6 +6,7 @@ import { listen } from '@tauri-apps/api/event'
 import ActivacionLicencia from './components/ActivacionLicencia.vue'
 import ToastNotifications from './components/ToastNotifications.vue'
 import { mostrarToast } from './services/toast'
+import { detalleLectorPublico, mensajeErrorAsistencia } from './services/mensajesLector'
 const licenciaValida = ref(false)
 const comprobandoLicencia = ref(true)
 const consultandoLicencia = ref(false)
@@ -38,21 +39,21 @@ let avisoLectorPendiente = false
 let desmontado = false
 const textoLector = computed(() => falloConsultaLector.value ? 'No se pudo consultar el estado del lector' : ({
   inicializando: 'Inicializando lector',
-  recuperando: lector.value.sdk_inicializado ? 'Esperando comprobar la captura' : 'Recuperando lector',
+  recuperando: lector.value.sdk_inicializado ? 'Coloca el dedo para comprobar el lector' : 'Reconectando lector',
   no_disponible: 'Lector no disponible',
 })[lector.value.estado])
 
 function actualizarLector(payload) {
   if (!['inicializando', 'disponible', 'recuperando', 'no_disponible'].includes(payload?.estado)
     || !Number.isSafeInteger(payload.revision) || payload.revision < lector.value.revision) return
-  lector.value = payload
+  lector.value = { ...payload, detalle: detalleLectorPublico(payload) }
   falloConsultaLector.value = false
   if (payload.estado === 'no_disponible' && !avisoLectorPendiente) {
     avisoLectorPendiente = true
     mostrarToast({ titulo: 'Lector no disponible', detalle: 'Se reintentará automáticamente. Consulta el indicador del lector si el problema persiste.', tipo: 'error' })
   } else if (payload.estado === 'disponible' && avisoLectorPendiente) {
     avisoLectorPendiente = false
-    mostrarToast({ titulo: 'Lectura recuperada', detalle: 'El SDK confirmó una captura válida.', tipo: 'exito' })
+    mostrarToast({ titulo: 'Lectura recuperada', detalle: 'El lector de huellas está listo.', tipo: 'exito' })
   }
 }
 
@@ -76,7 +77,7 @@ function presentarResultado(resultado) {
   const detalle = String(resultado || 'Error desconocido').replace(/^error:\s*/i, '').trim()
   if (detalle.includes('membresía no vigente')) return { titulo: 'Membresía no vigente', detalle: 'La fecha de inicio todavía no llega o la membresía ya terminó.', tipo: 'error', simbolo: '×' }
   if (detalle.includes('desactivado')) return { titulo: 'Cliente desactivado', detalle: 'Reactiva el cliente desde Administración para permitir su acceso.', tipo: 'error', simbolo: '×' }
-  return { titulo: 'No se registró la asistencia', detalle, tipo: 'error', simbolo: '×' }
+  return { titulo: 'No se registró la asistencia', detalle: mensajeErrorAsistencia(detalle), tipo: 'error', simbolo: '×' }
 }
 
 async function iniciarEventosLector() {
@@ -111,7 +112,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="min-h-screen bg-[#090a0c] text-white">
-    <p v-if="comprobandoLicencia" role="status" class="p-8">Verificando licencia...</p>
+    <section v-if="comprobandoLicencia" class="app-startup" aria-label="Preparando VIRTUS GYM" aria-busy="true">
+      <p class="app-startup__brand">VIRTUS GYM</p>
+      <span class="app-startup__spinner" aria-hidden="true"></span>
+      <p role="status">Preparando tu acceso…</p>
+      <p class="app-startup__hint">La aplicación se está iniciando.</p>
+    </section>
     <ActivacionLicencia v-else-if="!licenciaValida || consultandoLicencia"
       :activa="licenciaValida" :error-inicial="errorLicencia"
       @activada="revisarLicencia" @cerrar="consultandoLicencia = false" />

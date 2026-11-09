@@ -39,7 +39,7 @@ impl Drop for TempDb {
 }
 
 pub fn cliente(plan: i64) -> DatosCliente {
-    DatosCliente { tipo_membresia_id: Some(plan), incluir_inscripcion: true,
+    DatosCliente { sin_huella: false, tipo_membresia_id: Some(plan), incluir_inscripcion: true,
         nombre: "Cliente sintético".into(), telefono: "5512345678".into(), telefono_emergencia: String::new(),
         fecha_registro: "2024-01-31".into(), fecha_inicio_membresia: "2024-01-31".into(),
         fecha_fin_membresia: "2024-02-29".into(), foto_base64: String::new(), template_huella: "ab".repeat(400) }

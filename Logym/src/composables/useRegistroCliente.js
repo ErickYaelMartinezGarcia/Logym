@@ -1,6 +1,7 @@
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { capturarHuella, compararHuella, guardarCliente, inicializarBaseDeDatos, pausarLectorGlobal, listarTiposMembresia, obtenerPrecioInscripcion } from '../services/tauriApi'
 import { useCamera } from './useCamera'
+import { mensajeErrorLector, mensajeErrorAlta } from '../services/mensajesLector'
 
 export function useRegistroCliente() {
   const tiposMembresia = ref([])
@@ -13,6 +14,7 @@ export function useRegistroCliente() {
   const fechaRegistro = ref('')
   const fechaInicioMembresia = ref('')
   const fechaFinMembresia = ref('')
+  const sinHuella = ref(false)
   const template1 = ref('')
   const template2 = ref('')
   const capturandoHuella = ref(false)
@@ -51,10 +53,16 @@ export function useRegistroCliente() {
     fechaFinMembresia.value = fechaLocal(inicio)
   })
 
+  watch(sinHuella, () => {
+    template1.value = ''
+    template2.value = ''
+    mostrarMensaje(sinHuella.value ? 'Registro sin huella: el acceso se confirmará manualmente.' : 'Captura las dos huellas para continuar.')
+  }, { flush: 'sync' })
+
   const camera = useCamera(mostrarMensaje)
 
   async function capturarHuellaCliente(numero) {
-    if (capturandoHuella.value || guardando.value) return
+    if (sinHuella.value || capturandoHuella.value || guardando.value) return
     if (numero === 2 && !template1.value) {
       mostrarMensaje('Primero captura correctamente la primera huella.', 'error')
       return
@@ -85,7 +93,7 @@ export function useRegistroCliente() {
       }
     } catch (error) {
       console.error(`Error al capturar huella ${numero}:`, error)
-      mostrarMensaje(`No se pudo capturar la huella ${numero}: ${String(error)}`, 'error')
+      mostrarMensaje(mensajeErrorLector(error), 'error')
     } finally {
       capturandoHuella.value = false
     }
@@ -97,8 +105,8 @@ export function useRegistroCliente() {
       mostrarMensaje('Espera a que termine la captura de huella.', 'error')
       return
     }
-    if (!nombre.value.trim() || !template1.value || !template2.value) {
-      mostrarMensaje('Completa el nombre y las dos capturas de huella.', 'error')
+    if (!nombre.value.trim() || (!sinHuella.value && (!template1.value || !template2.value))) {
+      mostrarMensaje(sinHuella.value ? 'Completa el nombre del miembro.' : 'Completa el nombre y las dos capturas de huella.', 'error')
       return
     }
     if (!fechaRegistro.value || !fechaInicioMembresia.value || !fechaFinMembresia.value) {
@@ -121,7 +129,7 @@ export function useRegistroCliente() {
     if (!tipoMembresiaId.value) { mostrarMensaje('Selecciona una membresía.', 'error'); return }
     guardando.value = true
     try {
-      const huellasCoinciden = await compararHuella(template1.value, template2.value)
+      const huellasCoinciden = sinHuella.value || await compararHuella(template1.value, template2.value)
       if (!huellasCoinciden) {
         mostrarMensaje('Las capturas no coinciden. Repite el registro biométrico.', 'error')
         return
@@ -136,13 +144,15 @@ export function useRegistroCliente() {
         fechaInicioMembresia: fechaInicioMembresia.value,
         fechaFinMembresia: fechaFinMembresia.value,
         fotoBase64: camera.fotoBase64.value,
-        templateHuella: template1.value
+        sinHuella: sinHuella.value,
+        templateHuella: sinHuella.value ? '' : template1.value
       })
       nombre.value = ''
       telefono.value = ''
       telefonoEmergencia.value = ''
       template1.value = ''
       template2.value = ''
+      sinHuella.value = false
       camera.fotoBase64.value = ''
       fechaRegistro.value = fechaLocal()
       fechaInicioMembresia.value = fechaRegistro.value
@@ -150,7 +160,7 @@ export function useRegistroCliente() {
       mostrarMensaje('Miembro registrado. Ya puede utilizar el check-in.', 'success')
     } catch (error) {
       console.error('Error al guardar miembro:', error)
-      mostrarMensaje(`No se pudo guardar el miembro: ${String(error)}`, 'error')
+      mostrarMensaje(mensajeErrorAlta(error), 'error')
     } finally {
       guardando.value = false
     }
@@ -179,7 +189,7 @@ export function useRegistroCliente() {
   return {
     tiposMembresia, tipoMembresiaId, incluirInscripcion, precioInscripcion,
     nombre, telefono, telefonoEmergencia, fechaRegistro, fechaInicioMembresia, fechaFinMembresia,
-    template1, template2, capturandoHuella, guardando, mensaje, tipoMensaje, mostrarMensaje,
+    sinHuella, template1, template2, capturandoHuella, guardando, mensaje, tipoMensaje, mostrarMensaje,
     ...camera, capturarHuellaCliente, guardar
   }
 }

@@ -12,6 +12,7 @@ pub fn inicializar_db(app: &AppHandle) -> Result<String, String> {
 }
 
 pub fn guardar_cliente(app: &AppHandle, mut datos: DatosCliente) -> Result<i64, String> {
+    let _traza = crate::lector_mensajes::Tramo::nuevo("registro_guardar");
     validar_alta(&mut datos)?;
     let conn = database::abrir_db(app)?;
     let plan_id = datos.tipo_membresia_id.ok_or("Selecciona un tipo de membresía")?;
@@ -20,6 +21,11 @@ pub fn guardar_cliente(app: &AppHandle, mut datos: DatosCliente) -> Result<i64, 
         params![plan_id], |r| r.get(0)
     ).map_err(|_| "La membresía seleccionada no está disponible".to_string())?;
     completar_fin_alta(&mut datos, meses)?;
+    if datos.sin_huella {
+        return repositories::guardar_cliente_sin_duplicar(&conn, datos, |_, _| {
+            Err("No debe compararse biometría en un alta sin huella".into())
+        });
+    }
     let recurso = app.path_resolver().resource_dir().ok_or("No se encontró el SDK del lector")?;
     let bin = secugen::resolve_bin_path(&recurso)?;
     let controller = secugen::SecuGenController::from_bin_path(&bin)?;
@@ -38,7 +44,8 @@ fn validar_alta(datos: &mut DatosCliente) -> Result<(), String> {
             return Err("Teléfono inválido".into());
         }
     }
-    if datos.template_huella.len() != 800 || !datos.template_huella.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if (datos.sin_huella && !datos.template_huella.is_empty())
+        || (!datos.sin_huella && (datos.template_huella.len() != 800 || !datos.template_huella.bytes().all(|b| b.is_ascii_hexdigit()))) {
         return Err("Plantilla biométrica inválida".into());
     }
     if datos.foto_base64.len() > 3_000_000 {
@@ -87,6 +94,22 @@ pub fn listar_clientes_membresia(app: &AppHandle) -> Result<Vec<ClienteMembresia
     let conn = database::abrir_db(app)?; repositories::listar_clientes_membresia(&conn)
 }
 
+/// Búsqueda acotada para selección explícita; no expone plantillas biométricas.
+pub fn buscar_clientes_checkin(app: &AppHandle, consulta: String) -> Result<Vec<ClienteCheckIn>, String> {
+    let conn = database::abrir_db(app)?;
+    buscar_clientes_checkin_en(&conn, &consulta)
+}
+
+fn buscar_clientes_checkin_en(conn: &rusqlite::Connection, consulta: &str) -> Result<Vec<ClienteCheckIn>, String> {
+    let consulta = consulta.trim();
+    if consulta.is_empty() { return Ok(Vec::new()); }
+    if consulta.chars().count() > 120 { return Err("Búsqueda demasiado larga".into()); }
+    let mut stmt = conn.prepare("SELECT id FROM clientes WHERE activo=1 AND (instr(lower(nombre),lower(?1))>0 OR instr(COALESCE(telefono,''),?1)>0 OR CAST(id AS TEXT)=?1) ORDER BY nombre,id LIMIT 30").map_err(|e| e.to_string())?;
+    let ids = stmt.query_map([consulta], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    ids.into_iter().map(|id| obtener_cliente_checkin(conn, id)).collect()
+}
+
 // ESTA ES LA BUENA - ya no recibe template string de Vue, lo captura ella
 pub fn buscar_cliente_por_huella(app: &AppHandle) -> Result<Option<ClienteCheckIn>, String> {
     buscar_cliente_por_huella_worker(app).map_err(Into::into)
@@ -94,6 +117,7 @@ pub fn buscar_cliente_por_huella(app: &AppHandle) -> Result<Option<ClienteCheckI
 
 // Conserva los códigos del SDK hasta el supervisor; IPC sigue devolviendo String.
 pub fn buscar_cliente_por_huella_worker(app: &AppHandle) -> Result<Option<ClienteCheckIn>, secugen::SecuGenError> {
+    let _traza = crate::lector_mensajes::Tramo::nuevo("checkin_global");
     let conn = database::abrir_db(app)?;
     let resource_dir = app.path_resolver().resource_dir().unwrap_or_default();
     let bin_path = secugen::resolve_bin_path(&resource_dir).map_err(secugen::SecuGenError::Initialization)?;
@@ -124,6 +148,11 @@ pub fn buscar_cliente_por_huella_worker(app: &AppHandle) -> Result<Option<Client
 
 pub fn registrar_asistencia(app: &AppHandle, cliente_id: i64) -> Result<String, String> {
     let conn = database::abrir_db(app)?; repositories::registrar_asistencia(&conn, cliente_id)
+}
+
+/// La confirmación manual comparte las restricciones de acceso del lector.
+pub fn registrar_asistencia_manual(conn: &rusqlite::Connection, cliente_id: i64) -> Result<String, String> {
+    repositories::registrar_asistencia(conn, cliente_id)
 }
 pub fn renovar_membresia(app: &AppHandle, datos: DatosRenovacion) -> Result<ClienteCheckIn, String> {
     let conn = database::abrir_db(app)?;
@@ -158,6 +187,7 @@ pub fn check_in(app: &AppHandle) -> Result<Option<ClienteCheckIn>, String> {
 }
 
 pub fn capturar_huella(app: &AppHandle) -> Result<Option<String>, String> {
+    let _traza = crate::lector_mensajes::Tramo::nuevo("registro_capturar");
     let resource_path = app.path_resolver().resource_dir().unwrap_or_default();
     let bin_path = secugen::resolve_bin_path(&resource_path)?;
     let controller = secugen::SecuGenController::from_bin_path(&bin_path)?;
@@ -165,6 +195,7 @@ pub fn capturar_huella(app: &AppHandle) -> Result<Option<String>, String> {
 }
 
 pub fn comparar_huella(app: &AppHandle, t1: &str, t2: &str) -> Result<bool, String> {
+    let _traza = crate::lector_mensajes::Tramo::nuevo("registro_comparar");
     let resource_path = app.path_resolver().resource_dir().unwrap_or_default();
     let bin_path = secugen::resolve_bin_path(&resource_path)?;
     let controller = secugen::SecuGenController::from_bin_path(&bin_path)?;

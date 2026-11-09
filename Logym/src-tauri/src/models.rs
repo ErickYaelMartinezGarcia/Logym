@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 pub struct DatosCliente {
+    #[serde(default, rename = "sinHuella")]
+    pub sin_huella: bool,
     #[serde(default, rename = "tipoMembresiaId")]
     pub tipo_membresia_id: Option<i64>,
     #[serde(default, rename = "incluirInscripcion")]

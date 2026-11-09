@@ -60,7 +60,10 @@ async function cargarGrafica() {
     else asistenciasDiarias.value = await obtenerAsistenciasDiarias(periodoGrafica.value)
     errorGrafica.value = ''
   }
-  catch (e) { errorGrafica.value = String(e) }
+  catch (e) {
+    console.error('Error al cargar la gráfica de asistencias:', e)
+    errorGrafica.value = 'No se pudo cargar la gráfica de asistencias. Intenta nuevamente.'
+  }
 }
 let desuscribirGrafica
 onMounted(async () => {

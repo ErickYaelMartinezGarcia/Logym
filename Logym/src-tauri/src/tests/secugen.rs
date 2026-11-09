@@ -1,6 +1,28 @@
 const SG_DEV_FDU05: u32 = 0x06; // sgfplib.h: HU20 / Hamster Pro 20
     use super::*;
     #[test]
+    fn apertura_59_libera_manager_y_reintento_recupera_sin_aperturas_simultaneas() {
+        let _serial = TEST_SERIAL.lock().unwrap();
+        *FAKE.lock().unwrap() = Fake { open_error: SGFDX_ERROR_DEV_ALREADY_OPEN, ..Fake::default() };
+        let mut manager = None;
+        for _ in 0..3 {
+            let error = ensure_manager(&mut manager, &FAKE_API, 1).unwrap_err();
+            for dato in ["SGFPM_OpenDevice: 59", "SGFDX_ERROR_DEV_ALREADY_OPEN", "modelo_enumerado=", "generacion_usb="] { assert!(error.contains(dato), "{error}"); }
+            assert!(!error.contains("faltan drivers"));
+            assert!(manager.is_none());
+            assert_eq!(FAKE.lock().unwrap().active, 0);
+        }
+        assert_eq!(FAKE.lock().unwrap().terminated, 3);
+        assert_eq!(FAKE.lock().unwrap().closed, 0, "No cerrar un dispositivo cuya apertura fue rechazada");
+        FAKE.lock().unwrap().open_error = 0;
+        ensure_manager(&mut manager, &FAKE_API, 1).unwrap();
+        assert!(manager.as_ref().unwrap().connected);
+        assert_eq!(FAKE.lock().unwrap().peak, 1);
+        drop(manager);
+        assert_eq!(FAKE.lock().unwrap().closed, 1);
+        assert_eq!(FAKE.lock().unwrap().terminated, 4);
+    }
+    #[test]
     fn alta_rechaza_huella_duplicada_con_matcher_existente_incluso_inactiva() {
         let _serial=TEST_SERIAL.lock().unwrap();let sdk=SimulatedSdk::install();let reader=sdk.controller();
         let db=crate::test_support::db();
@@ -387,4 +409,25 @@ fn alta_corrupta_sdk_error_y_duplicado_no_dejan_registros_parciales() {
     for activo in [1,0] {db.execute("UPDATE clientes SET activo=?1 WHERE id=?2",rusqlite::params![activo,id]).unwrap();let before=crate::test_support::counts(&db);assert!(crate::repositories::guardar_cliente_sin_duplicar(&db,crate::test_support::cliente(plan),|a,b|reader.comparar_templates(a,b)).unwrap_err().contains("ya pertenece"));assert_eq!(crate::test_support::counts(&db),before);}
     FAKE.lock().unwrap().match_error=106;let before=crate::test_support::counts(&db);assert!(crate::repositories::guardar_cliente_sin_duplicar(&db,crate::test_support::cliente(plan),|a,b|reader.comparar_templates(a,b)).is_err());assert_eq!(crate::test_support::counts(&db),before);
     FAKE.lock().unwrap().match_error=0;db.execute("UPDATE clientes SET template_huella='corrupta' WHERE id=?1",[id]).unwrap();assert!(crate::repositories::guardar_cliente_sin_duplicar(&db,crate::test_support::cliente(plan),|a,b|reader.comparar_templates(a,b)).unwrap_err().contains("dañada"));assert_eq!(crate::test_support::counts(&db),before);
+}
+
+#[test]
+fn clientes_sin_huella_no_interfieren_con_identificacion_ni_duplicidad() {
+    let _serial = TEST_SERIAL.lock().unwrap();
+    let sdk = SimulatedSdk::install();
+    let reader = sdk.controller();
+    let db = crate::test_support::db();
+    let plan = crate::test_support::plan(&db, "Mensual");
+    let mut datos = crate::test_support::cliente(plan);
+    datos.sin_huella = true;
+    datos.template_huella.clear();
+    crate::repositories::guardar_cliente_sin_duplicar(&db, datos, |_,_| panic!("Alta sin SDK")).unwrap();
+    let id = crate::repositories::guardar_cliente_sin_duplicar(&db, crate::test_support::cliente(plan), |a,b| reader.comparar_templates(a,b)).unwrap();
+    db.execute("UPDATE clientes SET fecha_inicio_membresia=date('now','localtime'),fecha_fin_membresia=date('now','localtime','+30 days') WHERE id=?1", [id]).unwrap();
+    // Primero manual, después identificación biométrica: una sola asistencia.
+    crate::repositories::registrar_asistencia(&db, id).unwrap();
+    assert_eq!(reader.identificar_template(&db, &"ab".repeat(400)).unwrap(), Some(id));
+    assert!(crate::repositories::registrar_asistencia(&db, id).unwrap_err().contains("Ya registró"));
+    assert!(crate::repositories::guardar_cliente_sin_duplicar(&db, crate::test_support::cliente(plan), |a,b| reader.comparar_templates(a,b)).unwrap_err().contains("ya pertenece"));
+    assert_eq!(crate::test_support::counts(&db), (2,2,2,1));
 }

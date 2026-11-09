@@ -3,6 +3,9 @@ import AppShell from '../components/AppShell.vue'
 import { useCheckIn } from '../composables/useCheckIn'
 
 const {
+  consultaManual, resultadosManual, buscandoManual, registrandoManual, mensajeManual,
+  busquedaAbierta, modalManual, asistenciaManualRegistrada, lecturasPendientes,
+  buscarManual, seleccionarManual, confirmarManual, cancelarBusqueda,
   tiposMembresia, tipoMembresiaId,
   router, mensaje, estadoCheckin, cargando, procesandoRenovacion, clienteDetectado, modalAbierta,
   confirmandoRenovacion, lectorActivo, estadoLector, formatearFecha, etiquetaEstado, diasRestantes,
@@ -21,6 +24,31 @@ const {
         <div class="neon-line checkin-copy__line"></div>
       </section>
       <section class="surface checkin-card">
+        <form class="manual-search" role="search" aria-label="Buscar cliente para asistencia manual" @submit.prevent="buscarManual">
+          <label for="buscar-manual">Acceso manual</label>
+          <div class="manual-search__controls">
+            <input id="buscar-manual" v-model="consultaManual" maxlength="120" placeholder="Nombre, teléfono o ID" :disabled="registrandoManual || modalAbierta" />
+            <button class="secondary-button" :disabled="buscandoManual || registrandoManual || modalAbierta || !consultaManual.trim()">Buscar</button>
+          </div>
+        </form>
+        <div v-if="busquedaAbierta" class="checkin-content manual-results-view">
+          <div class="manual-results-heading">
+            <h2>Seleccionar cliente</h2>
+            <button type="button" class="text-button" @click="cancelarBusqueda">Volver al lector</button>
+          </div>
+          <p v-if="buscandoManual" role="status">Buscando clientes…</p>
+          <p v-else class="muted manual-search-feedback" role="status">{{ mensajeManual }}</p>
+          <ul class="manual-results">
+            <li v-for="cliente in resultadosManual" :key="cliente.id">
+              <button type="button" class="manual-result" @click="seleccionarManual(cliente)">
+                <strong>{{ cliente.nombre }}</strong>
+                <small>ID #{{ cliente.id }} · {{ cliente.telefono || 'Sin teléfono' }}</small>
+                <small>{{ etiquetaEstado(cliente.estado_membresia) }}</small>
+              </button>
+            </li>
+          </ul>
+        </div>
+        <div v-else class="checkin-content">
         <div class="fingerprint-orb" :class="{ 'fingerprint-orb--active': cargando || lectorActivo }">
           <div class="fingerprint-ring ring-one"></div>
           <div class="fingerprint-ring ring-two"></div><span>⌁</span>
@@ -33,17 +61,25 @@ const {
         </div> <button class="text-button text-button--secondary" :disabled="cargando" @click="capturarAcceso(true)">{{
           cargando ? 'Leyendo dispositivo...' : 'Capturar huella' }}</button><button class="text-button"
           @click="router.push('/registro')">¿Nuevo miembro? Regístralo aquí</button>
+        </div>
         <div v-if="modalAbierta && clienteDetectado" class="cliente-modal-backdrop" @click.self="cerrarModal">
           <div class="cliente-modal" :class="{
-            'cliente-modal--valid': ['activa', 'por_vencer'].includes(clienteDetectado.estado_membresia),
+            'cliente-modal--valid': (!modalManual || asistenciaManualRegistrada) && ['activa', 'por_vencer'].includes(clienteDetectado.estado_membresia),
             'cliente-modal--expired': clienteDetectado.estado_membresia === 'vencida'
           }" role="dialog" aria-modal="true" aria-label="Información del cliente">
-            <button class="modal-close" aria-label="Cerrar información del cliente" @click="cerrarModal">×</button>
-            <div v-if="['activa', 'por_vencer'].includes(clienteDetectado.estado_membresia)" class="access-approved"><span>✓</span> ACCESO
+            <button class="modal-close" aria-label="Cerrar información del cliente" :disabled="registrandoManual" @click="cerrarModal">×</button>
+            <div v-if="(!modalManual || asistenciaManualRegistrada) && ['activa', 'por_vencer'].includes(clienteDetectado.estado_membresia)" class="access-approved"><span>✓</span> ACCESO
               VÁLIDO</div>
+            <p v-if="modalManual" class="eyebrow">{{ asistenciaManualRegistrada ? 'ASISTENCIA REGISTRADA' : 'CONFIRMACIÓN DEL OPERADOR' }}</p>
+            <p v-if="!['success', 'warning'].includes(estadoCheckin)" class="checkin-status checkin-message" :class="`checkin-status--${estadoCheckin}`" role="status" aria-live="polite">{{ mensaje }}</p>
+            <p v-else-if="estadoCheckin === 'success'" class="sr-only" role="status" aria-live="polite">{{ mensaje }}</p>
             <div class="panel-head">
               <div v-if="clienteDetectado.foto_base64" class="cliente-foto-frame">
                 <img :src="clienteDetectado.foto_base64" alt="Foto del cliente" class="cliente-foto" />
+              </div>
+              <div v-else-if="modalManual" class="cliente-foto-frame cliente-avatar" aria-label="Sin fotografía">
+                <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="32" cy="23" r="10"/><path d="M13 54c0-12 8-19 19-19s19 7 19 19"/></svg>
+                <small>Sin fotografía</small>
               </div>
               <div class="cliente-details">
                 <div class="cliente-info">
@@ -56,9 +92,6 @@ const {
                     etiquetaEstado(clienteDetectado.estado_membresia) }}</span>
                 </div>
                 <div class="fechas-grid">
-                  <div><small>Registro</small>
-                    <p>{{ formatearFecha(clienteDetectado.fecha_registro) }}</p>
-                  </div>
                   <div><small>Inicio</small>
                     <p>{{ formatearFecha(clienteDetectado.fecha_inicio_membresia) }}</p>
                   </div>
@@ -68,7 +101,7 @@ const {
                 </div>
                 <p class="Dashboard-dias">{{ diasRestantes(clienteDetectado) }}</p>
 
-                <div v-if="clienteDetectado.estado_membresia === 'vencida'" class="renovacion-box">
+                <div v-if="!modalManual && clienteDetectado.estado_membresia === 'vencida'" class="renovacion-box">
                   <p class="muted renewal-label">Membresía vencida</p>
                   <p class="renewal-copy">Puedes autorizar una nueva membresía mensual con fecha base de hoy.</p>
                   <button v-if="!confirmandoRenovacion" class="secondary-button" @click="solicitarRenovacion">Renovar
@@ -91,6 +124,14 @@ const {
                 </div>
               </div>
             </div>
+            <div v-if="modalManual && !asistenciaManualRegistrada" class="manual-actions">
+              <div class="renewal-actions">
+                <button type="button" class="text-button" :disabled="registrandoManual" @click="cerrarModal">Cancelar y volver al lector</button>
+                <button type="button" class="secondary-button" :disabled="registrandoManual" @click="confirmarManual">{{ registrandoManual ? 'Registrando…' : 'Registrar asistencia' }}</button>
+              </div>
+            </div>
+            <button v-else-if="modalManual" type="button" class="secondary-button manual-return" @click="cerrarModal">Volver al lector</button>
+            <p v-if="lecturasPendientes" class="muted manual-queued" role="status">Hay {{ lecturasPendientes }} resultado(s) del lector pendiente(s). Se mostrarán al cerrar esta ventana.</p>
           </div>
         </div>
       </section>
@@ -99,12 +140,35 @@ const {
 </template>
 
 <style scoped>
+.manual-search { text-align: left; padding-bottom: 20px; margin-bottom: 22px; border-bottom: 1px solid #343941; }
+.manual-search label { color: #aeb3bc; font-size: 12px; }
+.manual-search__controls { display: flex; gap: 8px; margin-top: 9px; }
+.manual-search input { min-width: 0; width: 100%; padding: 11px 12px; color: #fff; background: #111317; border: 1px solid #343941; border-radius: 10px; }
+.manual-search input:focus { outline: 2px solid #ee2046; outline-offset: 2px; }
+.manual-search__controls .secondary-button { width: auto; }
+.checkin-content { height: 340px; }
+.manual-results-view { display: flex; flex-direction: column; text-align: left; }
+.manual-results-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.manual-results-heading h2 { font-size: 15px; }
+.manual-results-heading .text-button { margin: 0; color: #d3d7de; }
+.manual-search-feedback { font-size: 12px; line-height: 1.6; margin: 14px 0; }
+.manual-results { list-style: none; padding: 0; flex: 1; min-height: 0; overflow-y: auto; }
+.manual-results li { margin: 8px 0; }
+.manual-result { display: grid; gap: 5px; width: 100%; padding: 13px; text-align: left; color: #fff; background: #171a1f; border: 1px solid #343941; border-radius: 10px; }
+.manual-result:hover, .manual-result:focus-visible { border-color: #ee2046; }
+.manual-result small { color: #aeb3bc; font-size: 11px; }
+.cliente-avatar { display: grid; place-content: center; justify-items: center; gap: 8px; color: #8f96a1; }
+.cliente-avatar svg { width: 80px; height: 80px; }
+.manual-actions { margin-top: 24px; padding-top: 20px; border-top: 1px solid #343941; }
+.manual-queued { margin: 12px 0; font-size: 12px; line-height: 1.6; }
+.manual-actions .renewal-actions { flex-wrap: wrap; }
+.manual-actions .secondary-button { width: auto; }
+.manual-return { margin-top: 22px; }
 .checkin-layout {
   display: grid;
   grid-template-columns: 1fr minmax(320px, 430px);
   align-items: center;
   gap: clamp(20px, 5vw, 90px);
-  min-height: min(620px, calc(100dvh - 100px));
 }
 
 .checkin-card {
@@ -245,7 +309,7 @@ const {
 
 .cliente-modal {
   position: relative;
-  width: min(680px, 100%);
+  width: min(900px, 100%);
   max-height: calc(100vh - 48px);
   overflow-y: auto;
   padding: 34px;
@@ -307,15 +371,15 @@ const {
 
 .panel-head {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-columns: 300px minmax(0, 1fr);
   gap: 28px;
   align-items: center;
   padding-right: 32px;
 }
 
 .cliente-foto-frame {
-  width: 190px;
-  height: 190px;
+  width: 300px;
+  height: 300px;
   flex: none;
   overflow: hidden;
   border: 2px solid #4c5260;
@@ -386,7 +450,7 @@ const {
 
 .fechas-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-top: 22px;
 }
@@ -499,7 +563,7 @@ const {
   }
 
   .fechas-grid {
-    grid-template-columns: 1fr
+    grid-template-columns: repeat(2, minmax(0, 1fr))
   }
 
   .cliente-modal {
@@ -507,14 +571,14 @@ const {
   }
 
   .panel-head {
-    grid-template-columns: 130px minmax(0, 1fr);
+    grid-template-columns: 240px minmax(0, 1fr);
     gap: 16px;
     padding-right: 20px;
   }
 
   .cliente-foto-frame {
-    width: 130px;
-    height: 130px;
+    width: 240px;
+    height: 240px;
   }
 }
 
@@ -525,12 +589,14 @@ const {
   }
 
   .cliente-foto-frame {
-    width: 170px;
-    height: 170px;
+    width: min(280px, 100%);
+    height: auto;
+    aspect-ratio: 1;
+    justify-self: center;
   }
 
   .fechas-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 }

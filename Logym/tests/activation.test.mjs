@@ -8,7 +8,8 @@ import * as Vue from 'vue'
 const request = 'LOGYM2-HW-' + 'a'.repeat(64)
 async function appFixture(options = {}) {
   let valid = options.valid ?? false
-  const calls = [], listeners = new Map(), copies = []
+  const calls = [], listeners = new Map(), copies = [], avisos = []
+  let completarVerificacion
   const doc = { activeElement: null, execCommand: () => options.fallback ?? false }
   globalThis.document = doc
   const element = type => ({ type, tagName: type.toUpperCase(), children: [], props: {}, style: {}, text: '', events: {},
@@ -23,7 +24,7 @@ async function appFixture(options = {}) {
     patchProp(n, key, before, after) { n.props[key]=after; if(key==='value')n.value=after },
   })
   const context=createContext({console,document:doc,navigator:{clipboard:{writeText:async code=>{if(options.clipboardError)throw Error('denied');copies.push(code)}}},setInterval:()=>1,clearInterval:()=>{},setTimeout,clearTimeout})
-  const invoke=async (command,args)=>{calls.push([command,args]);if(command==='estado_licencia'){if(options.statusError)throw Error('IPC no disponible');return valid}if(command==='solicitud_licencia'){if(options.hardwareError)throw Error('UUID SMBIOS genérico');return request}if(command==='activar_licencia'){if(options.activationError)throw options.activationError;valid=true;return}if(command==='estado_lector')return {estado:'disponible',revision:1};return 'ok'}
+  const invoke=async (command,args)=>{calls.push([command,args]);if(command==='estado_licencia'){if(options.statusPending)return new Promise(resolve=>{completarVerificacion=()=>resolve(valid)});if(options.statusError)throw Error('IPC no disponible');return valid}if(command==='solicitud_licencia'){if(options.hardwareError)throw Error('UUID SMBIOS genérico');return request}if(command==='activar_licencia'){if(options.activationError)throw options.activationError;valid=true;return}if(command==='estado_lector')return {estado:'disponible',revision:1};return 'ok'}
   const mocks={vue:Vue,'@tauri-apps/api/tauri':{invoke},'@tauri-apps/api/event':{listen:async(name,fn)=>{listeners.set(name,fn);return()=>listeners.delete(name)}},'vue-router':{useRoute:()=>({path:'/',name:'Check-in'})}}
   const cache=new Map()
   async function load(file) {
@@ -33,9 +34,14 @@ async function appFixture(options = {}) {
     const compiled=compileScript(descriptor,{id:file,inlineTemplate:true})
     const module=new SourceTextModule(compiled.content,{context,identifier:file});cache.set(file,module)
     await module.link(async spec=>{
+      if(spec.endsWith('/mensajesLector')) {
+        const helper = new SourceTextModule(await readFile(new URL('../src/services/mensajesLector.js',import.meta.url),'utf8'),{context})
+        await helper.link(()=>{throw Error('Traductor independiente')})
+        return helper
+      }
       let values=mocks[spec]
       if(spec.endsWith('ToastNotifications.vue'))values={default:{render:()=>null}}
-      if(spec.endsWith('/toast'))values={mostrarToast:()=>{}}
+      if(spec.endsWith('/toast'))values={mostrarToast:aviso=>avisos.push(aviso)}
       if(spec.endsWith('.svg'))values={default:'synthetic.svg'}
       if(values)return new SyntheticModule(Object.keys(values),function(){for(const[k,v]of Object.entries(values))this.setExport(k,v)},{context})
       if(spec.endsWith('.vue'))return load(new URL(spec,'file:///'+file).pathname.slice(1))
@@ -56,8 +62,37 @@ async function appFixture(options = {}) {
   const submit=async(value='signed synthetic license')=>{const input=nodes().find(n=>n.props.id==='licencia');assert(input);input.value=value;input.events.input({target:input});await flush();const form=nodes().find(n=>n.type==='form');await form.props.onSubmit({preventDefault(){}});await flush()}
   await flush()
   const openLicense=async()=>{assert(!button('Licencia de esta computadora'));await click('Abrir menú');await click('Información del sistema');const dot=nodes().find(n=>n.type==='span'&&n.props['aria-label']==='Consultar licencia');assert(dot,'Punto verde dentro de información');await dot.props.onClick();await flush();assert(!text().includes('Acerca de Logym'))}
-  return {calls,listeners,copies,nodes,text,button,click,submit,flush,openLicense,unmount:()=>application.unmount()}
+  return {calls,listeners,copies,avisos,nodes,text,button,click,submit,flush,openLicense,completarVerificacion:()=>completarVerificacion?.(),unmount:()=>application.unmount()}
 }
+
+test('La espera del backend mantiene una pantalla de inicio visible sin montar rutas', async () => {
+  const f = await appFixture({valid:true,statusPending:true})
+  try {
+    assert.ok(f.text().includes('VIRTUS GYM'))
+    assert.ok(f.text().includes('Preparando tu acceso'))
+    assert.ok(f.nodes().some(n=>n.props['aria-busy']==='true'))
+    assert.ok(!f.calls.some(([c])=>c==='inicializar_db'))
+    f.completarVerificacion(); await f.flush()
+    assert.ok(f.text().includes('Sistema de prueba'))
+    assert.ok(!f.text().includes('Preparando tu acceso'))
+  } finally { f.unmount() }
+})
+
+test('Indicador global, tooltip y notificaciones del lector no exponen diagnósticos técnicos', async () => {
+  const f = await appFixture({valid:true})
+  const tecnico = String.raw`SGFPM_OpenDevice: 59; SDK=C:\recursos\sgfplib.dll; DPAPI SQLCipher`
+  f.listeners.get('logym://lector-estado')({payload:{estado:'no_disponible',revision:2,detalle:tecnico}})
+  await f.flush()
+  assert.ok(f.text().includes('No se pudo iniciar el lector de huellas. Verifica su conexión USB.'))
+  assert.ok(!/SGFPM|59|recursos|\.dll|DPAPI|SQLCipher/.test(f.text()))
+  assert.ok(!f.nodes().some(n => String(n.props.title||'').includes(tecnico)))
+  f.listeners.get('logym://checkin')({payload:{cliente:{id:1,nombre:'Sintético'},resultado:'error: '+tecnico}})
+  assert.ok(!/SGFPM|59|recursos|\.dll|DPAPI|SQLCipher/.test(JSON.stringify(f.avisos)))
+  f.listeners.get('logym://lector-estado')({payload:{estado:'disponible',revision:3,detalle:'Captura comprobada por el SDK'}})
+  await f.flush()
+  assert.equal(f.avisos.at(-1).detalle,'El lector de huellas está listo.')
+  f.unmount()
+})
 
 test('Arranque sin licencia muestra activación y hardware; no monta rutas ni abre DB',async()=>{
  const f=await appFixture();try{assert(f.text().includes('Activación de Logym'));assert(f.nodes().some(n=>n.props.id==='solicitud'&&n.props.value===request));assert(f.button('Activar licencia'));assert(!f.calls.some(([c])=>c==='inicializar_db'||c==='estado_lector'));assert.equal(f.listeners.size,0);await f.click('Copiar código');assert.deepEqual(f.copies,[request])}finally{f.unmount()}

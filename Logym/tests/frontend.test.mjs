@@ -3,11 +3,12 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { SourceTextModule, SyntheticModule, createContext } from 'node:vm'
 import * as Vue from 'vue'
+import { MENSAJES_LECTOR, mensajeErrorLector, detalleLectorPublico } from '../src/services/mensajesLector.js'
 
 // Ejecuta los módulos de producción. Se simulan únicamente sus fronteras:
 // IPC, cámara, router, lifecycle y reloj; no se replica la lógica de negocio.
 async function fixture(file, overrides = {}) {
-  const mounted = [], unmounted = [], listeners = new Map(), calls = []
+  const mounted = [], unmounted = [], listeners = new Map(), calls = [], erroresTecnicos = []
   let now = 0, timerId = 0
   const timers = new Map()
   const api = {
@@ -15,6 +16,8 @@ async function fixture(file, overrides = {}) {
     inicializarBaseDeDatos: async () => {},
     listarTiposMembresia: async () => [{ id: 1, nombre: 'Mensual', duracion_meses: 1, solo_alta: false }],
     obtenerPrecioInscripcion: async () => 15000,
+    buscarClientesCheckin: async () => [],
+    registrarAsistencia: async id => { calls.push(['asistencia', id]); return 'Asistencia registrada' },
     capturarHuella: async () => 'ab'.repeat(400),
     compararHuella: async () => true,
     guardarCliente: async d => { calls.push(['guardar', d]) },
@@ -30,14 +33,20 @@ async function fixture(file, overrides = {}) {
     '@tauri-apps/api/tauri': { invoke: async () => ({ estado: 'recuperando', revision: 1, sdk_inicializado: true, captura_comprobada: false }), ...overrides.ipc },
   }
   const context = createContext({
-    console: { error: () => {}, warn: () => {}, log: () => {} },
+    navigator: overrides.navigator || {},
+    console: { error: (...args) => erroresTecnicos.push(args), warn: () => {}, log: () => {} },
     Date: class extends Date { static now() { return now } },
     setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, at: now + ms }); return id },
     clearTimeout: id => timers.delete(id), setInterval: () => ++timerId, clearInterval: () => {},
   })
   const source = new URL(`../src/${file}`, import.meta.url)
   const module = new SourceTextModule(await readFile(source, 'utf8'), { context, identifier: source.href })
-  await module.link(specifier => {
+  await module.link(async specifier => {
+    if (specifier === '../services/mensajesLector') {
+      const helper = new SourceTextModule(await readFile(new URL('../src/services/mensajesLector.js', import.meta.url), 'utf8'), { context })
+      await helper.link(() => { throw Error('El traductor debe ser independiente') })
+      return helper
+    }
     const values = mocks[specifier]
     if (!values) throw new Error(`Frontera no simulada: ${specifier}`)
     return new SyntheticModule(Object.keys(values), function () {
@@ -45,7 +54,7 @@ async function fixture(file, overrides = {}) {
     }, { context })
   })
   await module.evaluate()
-  return { ns: module.namespace, api, calls, listeners,
+  return { ns: module.namespace, api, calls, listeners, erroresTecnicos,
     mount: async () => { for (const fn of mounted) await fn() },
     unmount: async () => { for (const fn of unmounted) await fn() },
     advance: ms => { now += ms; for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.fn() } },
@@ -57,6 +66,283 @@ async function registro(overrides) {
   const state = f.ns.useRegistroCliente()
   await f.mount()
   return { ...f, state }
+}
+
+for (const tecnico of [String.raw`SGFPM_OpenDevice: 59; SDK=C:\desarrollo\bin\sgfplib.dll`, 'SGFPM_Init: 6 (DLLLOAD_FAILED_DRV)', 'SQLCipher DPAPI Rust Tauri: error 13', '/opt/private/lib/reader.so']) {
+  test(`Captura: el diagnóstico permanece en logs y se presenta un mensaje público seguro (${tecnico.slice(0, 18)})`, async () => {
+    const f = await registro({api: {capturarHuella: async () => {throw tecnico}}})
+    await f.state.capturarHuellaCliente(1)
+    assert.ok(Object.values(MENSAJES_LECTOR).includes(f.state.mensaje.value))
+    assert.equal(f.state.mensaje.value.includes(tecnico), false)
+    assert.ok(f.erroresTecnicos.some(args => args.includes(tecnico)))
+    assert.equal(f.state.template1.value, '')
+    assert.equal(detalleLectorPublico({estado:'no_disponible',detalle:tecnico}), MENSAJES_LECTOR.inicio)
+    await f.unmount()
+  })
+}
+
+test('El fallo OpenDevice usa el mensaje público acordado y un reintento puede capturar', async () => {
+  assert.equal(mensajeErrorLector('SGFPM_OpenDevice: 59'), 'No se pudo iniciar el lector de huellas. Verifica su conexión USB.')
+  let intentos = 0
+  const f = await registro({api:{capturarHuella: async () => {if (++intentos===1)throw 'SGFPM_OpenDevice: 59';return 'ab'.repeat(400)}}})
+  await f.state.capturarHuellaCliente(1)
+  assert.equal(f.state.tipoMensaje.value, 'error')
+  await f.state.capturarHuellaCliente(1)
+  assert.equal(f.state.template1.value.length, 800)
+  assert.equal(f.state.tipoMensaje.value, 'success')
+  await f.unmount()
+})
+
+test('El alta conserva el rechazo de huella duplicada pero no muestra errores nativos de comparación', async () => {
+  for (const error of ['La huella ya pertenece al cliente #7; revisa su registro antes de darlo de alta', String.raw`SGFPM_MatchTemplate: 106; C:\privado\sgfplib.dll`]) {
+    const f = await registro({api:{guardarCliente: async () => {throw error}}})
+    completar(f.state); await f.state.guardar()
+    assert.equal(f.state.tipoMensaje.value, 'error')
+    if(error.startsWith('La huella')) assert.equal(f.state.mensaje.value,error)
+    else assert.ok(!/SGFPM|106|privado|\.dll/.test(f.state.mensaje.value))
+    await f.unmount()
+  }
+})
+
+test('Check-in oculta los detalles técnicos tanto en lecturas como en búsquedas', async () => {
+  const tecnico = String.raw`SGFPM_OpenDevice: 59; C:\privado\sgfplib.dll; SQLCipher DPAPI`
+  const f = await fixture('composables/useCheckIn.js', {api:{buscarClientesCheckin:async()=>{throw tecnico}}})
+  const s = f.ns.useCheckIn(); await f.mount()
+  s.consultaManual.value = 'Alex'; await s.buscarManual()
+  assert.equal(s.mensajeManual.value,'No se pudo buscar al cliente. Intenta nuevamente.')
+  assert.ok(f.erroresTecnicos.some(args=>args.includes(tecnico)))
+  await f.listeners.get('logym://checkin')({payload:{cliente:{id:1,nombre:'Sintético'},resultado:'error: '+tecnico}})
+  assert.ok(!/SGFPM|59|privado|\.dll|SQLCipher|DPAPI/.test(s.mensaje.value))
+  await s.cerrarModal(); await f.unmount()
+})
+
+test('Alta sin huella no captura ni compara y conserva los cobros del formulario', async () => {
+  const { state, calls } = await registro({ api: {
+    capturarHuella: async () => { throw Error('SDK no debe usarse') },
+    compararHuella: async () => { throw Error('SDK no debe usarse') },
+  } })
+  assert.equal(state.sinHuella.value, false)
+  completar(state)
+  state.sinHuella.value = true
+  await Vue.nextTick()
+  assert.equal(state.template1.value, '')
+  assert.equal(state.template2.value, '')
+  await state.capturarHuellaCliente(1)
+  await state.guardar()
+  const datos = calls.find(c => c[0] === 'guardar')[1]
+  assert.equal(datos.sinHuella, true)
+  assert.equal(datos.templateHuella, '')
+  assert.equal(datos.tipoMembresiaId, 1)
+  assert.equal(datos.incluirInscripcion, true)
+  assert.equal(state.tipoMensaje.value, 'success')
+})
+
+test('Volver a modalidad biométrica exige dos capturas nuevas', async () => {
+  const { state, calls } = await registro()
+  completar(state)
+  state.sinHuella.value = true
+  await Vue.nextTick()
+  state.sinHuella.value = false
+  await Vue.nextTick()
+  await state.guardar()
+  assert.equal(calls.filter(c => c[0] === 'guardar').length, 0)
+  await state.capturarHuellaCliente(1)
+  await state.capturarHuellaCliente(2)
+  await state.guardar()
+  assert.equal(calls.find(c => c[0] === 'guardar')[1].sinHuella, false)
+})
+
+test('Alta sin huella mantiene validación de nombre, teléfonos, fechas y plan', async () => {
+  const { state, calls } = await registro()
+  state.sinHuella.value = true
+  await Vue.nextTick()
+  for (const [campo, valor] of [['nombre',''], ['telefono','123'], ['fechaRegistro',''], ['fechaFinMembresia','2020-01-01'], ['tipoMembresiaId','']]) {
+    completar(state)
+    state.telefono.value = ''
+    state.tipoMembresiaId.value = '1'
+    state[campo].value = valor
+    await state.guardar()
+    assert.equal(calls.filter(c => c[0] === 'guardar').length, 0)
+  }
+})
+
+test('Asistencia manual exige selección explícita y confirmación; evita doble clic', async () => {
+  const clientes = [{ id: 7, nombre: 'Alex', telefono: '5511111111' }, { id: 8, nombre: 'Alex', telefono: '5522222222' }]
+  let finish, saves = 0, savedId, savedArgs
+  const f = await fixture('composables/useCheckIn.js', { api: {
+    buscarClientesCheckin: async () => clientes,
+    registrarAsistencia: async (...args) => { saves++; savedArgs = args; savedId = args[0]; await new Promise(resolve => { finish = resolve }); return 'Asistencia registrada' },
+  } })
+  const s = f.ns.useCheckIn(); await f.mount()
+  await s.confirmarManual()
+  s.consultaManual.value = 'Alex'
+  await s.buscarManual()
+  assert.equal(s.clienteManual.value, null)
+  await s.confirmarManual()
+  assert.equal(saves, 0)
+  s.seleccionarManual(s.resultadosManual.value[1])
+  assert.equal(saves, 0)
+  assert.equal(s.modalAbierta.value, true)
+  assert.equal(s.modalManual.value, true)
+  const pending = s.confirmarManual()
+  await s.confirmarManual()
+  assert.equal(saves, 1)
+  assert.equal(savedId, 8)
+  assert.deepEqual(savedArgs, [8], 'Envía únicamente el ID del cliente, sin contraseña')
+  finish(); await pending
+  assert.equal(s.asistenciaManualRegistrada.value, true)
+  assert.match(s.mensaje.value, /ID #8/)
+  f.advance(2000); await Promise.resolve()
+  assert.equal(s.clienteManual.value, null)
+  assert.equal(s.modalAbierta.value, false)
+  assert.equal(s.busquedaAbierta.value, false)
+  assert.equal(s.consultaManual.value, '')
+  assert.equal(f.calls.filter(c => c[0] === 'pausa').length, 0, 'La búsqueda y confirmación no pausan el SDK')
+  await f.unmount()
+})
+
+test('Cambiar búsqueda invalida selección y descarta respuestas anteriores', async () => {
+  let finish
+  const f = await fixture('composables/useCheckIn.js', { api: { buscarClientesCheckin: async () => new Promise(resolve => { finish = resolve }) } })
+  const s = f.ns.useCheckIn(); await f.mount()
+  s.consultaManual.value = 'Alex'
+  const pending = s.buscarManual()
+  s.consultaManual.value = 'Otro'
+  finish([{id: 7, nombre: 'Alex'}]); await pending
+  assert.equal(s.resultadosManual.value.length, 0)
+  assert.equal(s.clienteManual.value, null)
+  assert.equal(s.buscandoManual.value, false)
+  await f.unmount()
+})
+
+test('Cancelar una búsqueda pendiente vuelve al lector sin tocar el supervisor', async () => {
+  let finish
+  const f = await fixture('composables/useCheckIn.js', { api: { buscarClientesCheckin: async () => new Promise(resolve => { finish = resolve }) } })
+  const s = f.ns.useCheckIn(); await f.mount()
+  s.consultaManual.value = 'Alex'
+  assert.equal(s.busquedaAbierta.value, false, 'Escribir no sustituye la tarjeta')
+  const pending = s.buscarManual()
+  assert.equal(s.busquedaAbierta.value, true)
+  s.cancelarBusqueda()
+  finish([{id: 1}]); await pending
+  assert.equal(s.busquedaAbierta.value, false)
+  assert.equal(s.resultadosManual.value.length, 0)
+  assert.equal(f.calls.length, 0)
+  await f.unmount()
+})
+
+test('Huella durante búsqueda abre su resultado y conserva la consulta al cerrar', async () => {
+  const f = await fixture('composables/useCheckIn.js', { api: { buscarClientesCheckin: async () => [{id: 1, nombre: 'Alex'}] } })
+  const s = f.ns.useCheckIn(); await f.mount()
+  s.consultaManual.value = 'Alex'; await s.buscarManual()
+  await f.listeners.get('logym://checkin')({payload: {cliente: {id: 2, nombre: 'Biométrico'}, resultado: 'registrada'}})
+  assert.equal(s.clienteDetectado.value.id, 2)
+  assert.equal(s.modalManual.value, false)
+  assert.equal(s.estadoCheckin.value, 'success')
+  await s.cerrarModal()
+  assert.equal(s.busquedaAbierta.value, true)
+  assert.equal(s.resultadosManual.value[0].id, 1)
+  assert.equal(s.consultaManual.value, 'Alex')
+  assert.equal(f.calls.filter(c => c[0] === 'asistencia').length, 0, 'No vuelve a registrar la huella')
+  s.cancelarBusqueda(); await f.unmount()
+})
+
+test('Huella durante confirmación manual queda en cola sin cambiar la identidad ni perder eventos', async () => {
+  let finish, renewals = 0
+  const f = await fixture('composables/useCheckIn.js', { api: {
+    buscarClientesCheckin: async () => [{id: 1, nombre: 'Manual', estado_membresia: 'vencida'}],
+    registrarAsistencia: async () => new Promise(resolve => { finish = resolve }),
+    renovarMembresia: async () => { renewals++ },
+  } })
+  const s = f.ns.useCheckIn(); await f.mount()
+  s.consultaManual.value = 'Manual'; await s.buscarManual()
+  s.seleccionarManual(s.resultadosManual.value[0])
+  s.solicitarRenovacion(); await s.renovar()
+  assert.equal(s.confirmandoRenovacion.value, false)
+  assert.equal(renewals, 0)
+  const pending = s.confirmarManual()
+  const recibir = f.listeners.get('logym://checkin')
+  await recibir({payload: {cliente: {id: 2, nombre: 'Huella A'}, resultado: 'registrada'}})
+  await recibir({payload: {cliente: {id: 3, nombre: 'Huella B'}, resultado: 'duplicada'}})
+  assert.equal(s.clienteDetectado.value.id, 1)
+  assert.equal(s.lecturasPendientes.value, 2)
+  await s.cerrarModal()
+  assert.equal(s.modalAbierta.value, true, 'No cierra una operación en curso')
+  finish('Asistencia registrada'); await pending
+  assert.equal(s.clienteDetectado.value.id, 1, 'Presenta el éxito manual antes de las lecturas pendientes')
+  f.advance(2000); await Promise.resolve()
+  assert.equal(s.clienteDetectado.value.id, 2)
+  assert.equal(s.estadoCheckin.value, 'success')
+  assert.equal(s.lecturasPendientes.value, 1)
+  await s.cerrarModal()
+  assert.equal(s.clienteDetectado.value.id, 3)
+  assert.equal(s.estadoCheckin.value, 'warning')
+  assert.equal(s.lecturasPendientes.value, 0)
+  await s.cerrarModal()
+  assert.equal(s.busquedaAbierta.value, false)
+  assert.equal(s.modalAbierta.value, false)
+  assert.equal(f.calls.filter(c => c[0] === 'pausa').length, 2, 'Solo pausa por evento y libera después de mostrar toda la cola')
+  await f.unmount()
+})
+
+test('Salir durante confirmación manual impide cierres tardíos', async () => {
+  let finish
+  const f = await fixture('composables/useCheckIn.js', { api: {
+    buscarClientesCheckin: async () => [{id: 1}],
+    registrarAsistencia: async () => new Promise(resolve => { finish = resolve }),
+  } })
+  const s = f.ns.useCheckIn(); await f.mount()
+  s.consultaManual.value = 'Cliente'; await s.buscarManual()
+  s.seleccionarManual(s.resultadosManual.value[0])
+  const pending = s.confirmarManual()
+  await f.unmount()
+  finish('Asistencia registrada'); await pending
+  f.advance(5000)
+  assert.equal(s.asistenciaManualRegistrada.value, false)
+  assert.equal(f.calls.length, 0)
+})
+
+for (const navigator of [{}, { mediaDevices: { getUserMedia: async () => { const e = Error('Denegado'); e.name = 'NotAllowedError'; throw e } } }]) {
+  test(`Cámara ${navigator.mediaDevices ? 'sin permiso' : 'ausente'} no genera fotografías ni lanza un error al formulario`, async () => {
+    const f = await fixture('composables/useCamera.js', {navigator})
+    const mensajes = []
+    const camara = f.ns.useCamera((texto, tipo) => mensajes.push([texto, tipo]))
+    await camara.iniciarCamara()
+    assert.equal(camara.fotoBase64.value, '')
+    assert.equal(camara.camaraActiva.value, false)
+    assert.equal(mensajes.at(-1)[1], 'error')
+    await f.unmount()
+  })
+}
+
+for (const sinHuella of [false, true]) {
+  test(`Guardar cliente ${sinHuella ? 'sin' : 'con'} huella admite fotografía vacía`, async () => {
+    const f = await registro()
+    completar(f.state); f.state.sinHuella.value = sinHuella
+    await f.state.guardar()
+    assert.equal(f.calls.find(c => c[0] === 'guardar')[1].fotoBase64, '')
+    assert.equal(f.state.tipoMensaje.value, 'success')
+    await f.unmount()
+  })
+}
+
+for (const error of ['Membresía vencida', 'Membresía pendiente', 'Cliente desactivado', 'Ya registró asistencia hoy']) {
+  test(`Asistencia manual muestra rechazo del backend: ${error}`, async () => {
+    const f = await fixture('composables/useCheckIn.js', { api: {
+      buscarClientesCheckin: async () => [{id: 1, nombre: 'Cliente'}],
+      registrarAsistencia: async () => { throw Error(error) },
+    } })
+    const s = f.ns.useCheckIn(); await f.mount()
+    s.consultaManual.value = 'Cliente'; await s.buscarManual()
+    s.seleccionarManual(s.resultadosManual.value[0]); await s.confirmarManual()
+    assert.ok(s.mensaje.value.includes(error))
+    assert.equal(s.modalAbierta.value, true)
+    assert.equal(s.estadoCheckin.value, 'error')
+    assert.equal(s.registrandoManual.value, false)
+    await s.cerrarModal()
+    assert.equal(s.busquedaAbierta.value, false)
+    await f.unmount()
+  })
 }
 function completar(state) {
   state.nombre.value = 'Cliente sintético'
@@ -256,7 +542,9 @@ test('CheckIn: fallos de consulta, listener, catálogo y renovación se muestran
   await state.renovar()
   assert.equal(state.estadoCheckin.value, 'error')
   assert.equal(state.procesandoRenovacion.value, false)
-  assert.match(state.mensaje.value, /pago simulado/)
+  assert.match(state.mensaje.value, /No se pudo renovar la membresía/)
+  assert.ok(!state.mensaje.value.includes('pago simulado'))
+  assert.ok(f.erroresTecnicos.some(args => args.some(a => String(a).includes('pago simulado'))))
   await f.unmount()
 })
 

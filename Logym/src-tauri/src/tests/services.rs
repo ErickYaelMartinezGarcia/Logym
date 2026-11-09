@@ -2,6 +2,61 @@ use super::*;
 use crate::test_support::cliente;
 
 #[test]
+fn asistencia_manual_sin_password_reutiliza_validaciones() {
+    use crate::test_support::*;
+    let db = crate::test_support::db();
+    let id = vigente(&db);
+    assert!(!crate::membresias::tiene_administrador(&db).unwrap());
+    registrar_asistencia_manual(&db, id).unwrap();
+    assert!(registrar_asistencia_manual(&db, id).unwrap_err().contains("Ya registró"));
+    for (inicio, fin, activo, error) in [
+        ("-30 days", "-1 day", 1, "vencida"),
+        ("+1 day", "+30 days", 1, "pendiente"),
+        ("-1 day", "+30 days", 0, "desactivado"),
+    ] {
+        db.execute("UPDATE clientes SET fecha_inicio_membresia=date('now','localtime',?1),fecha_fin_membresia=date('now','localtime',?2),activo=?3 WHERE id=?4", params![inicio,fin,activo,id]).unwrap();
+        assert!(registrar_asistencia_manual(&db, id).unwrap_err().contains(error));
+    }
+    assert_eq!(counts(&db), (1,1,1,1));
+}
+
+#[test]
+fn alta_sin_huella_es_explicita_y_conserva_validaciones() {
+    let mut d = cliente(1);
+    d.template_huella.clear();
+    assert!(validar_alta(&mut d).is_err());
+    d.sin_huella = true;
+    validar_alta(&mut d).unwrap();
+    d.template_huella = "ab".repeat(400);
+    assert!(validar_alta(&mut d).is_err(), "No aceptar datos biométricos contradictorios");
+    d.template_huella.clear();
+    d.nombre.clear();
+    assert!(validar_alta(&mut d).is_err());
+    let old: DatosCliente = serde_json::from_str(&format!(r#"{{"nombre":"Anterior","telefono":"","templateHuella":"{}"}}"#, "ab".repeat(400))).unwrap();
+    assert!(!old.sin_huella, "IPC existente conserva modalidad biométrica");
+}
+
+#[test]
+fn busqueda_manual_distingue_homonimos_y_no_expone_inactivos() {
+    let db = crate::test_support::db();
+    let a = crate::test_support::vigente(&db);
+    let b = crate::test_support::vigente(&db);
+    db.execute("UPDATE clientes SET nombre='Alex Rivera',telefono='5511111111' WHERE id=?1", [a]).unwrap();
+    db.execute("UPDATE clientes SET nombre='Alex Rivera',telefono='5522222222' WHERE id=?1", [b]).unwrap();
+    let results = buscar_clientes_checkin_en(&db, "Alex").unwrap();
+    assert_eq!(results.len(), 2);
+    assert_ne!(results[0].id, results[1].id);
+    assert_ne!(results[0].telefono, results[1].telefono);
+    assert!(!results[0].estado_membresia.is_empty());
+    assert!(!serde_json::to_string(&results).unwrap().contains("template_huella"));
+    assert_eq!(buscar_clientes_checkin_en(&db, "5522222222").unwrap()[0].id, b);
+    assert!(buscar_clientes_checkin_en(&db, "' OR 1=1 --").unwrap().is_empty());
+    assert!(buscar_clientes_checkin_en(&db, " ").unwrap().is_empty());
+    db.execute("UPDATE clientes SET activo=0 WHERE id=?1", [a]).unwrap();
+    assert_eq!(buscar_clientes_checkin_en(&db, "Alex").unwrap().len(), 1);
+}
+
+#[test]
 fn alta_rechaza_campos_invalidos_sin_abrir_base_real() {
     let cases: Vec<(&str,String)> = vec![
         ("nombre"," ".into()),("nombre","x".repeat(121)),("nombre","a\0b".into()),

@@ -7,7 +7,7 @@ const route = useRoute()
 const menuAbierto = ref(false)
 const infoAbierta = ref(false)
 const consultarLicencia = inject('consultarLicencia')
-const version = '0.1.0'
+const version = '1.1.0'
 
 const enlaces = [
    { to: '/dashboard', label: 'Dashboard', caption: 'Actividad del gimnasio', icon: 'grid' },

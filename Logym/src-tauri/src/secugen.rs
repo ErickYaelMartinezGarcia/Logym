@@ -1,5 +1,5 @@
 use libloading::Library;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use rusqlite::Connection;
 use std::ffi::c_void;
 use std::path::{Path, PathBuf};
@@ -14,6 +14,7 @@ pub const SG_TEMPLATE_FORMAT_SG400: u16 = 0x0200;
 pub const SG_SECURITY_LEVEL_NORMAL: u32 = 3;
 pub const SG_TEMPLATE_SIZE: usize = 400;
 pub const SGFDX_ERROR_NONE: u32 = 0;
+pub const SGFDX_ERROR_DEV_ALREADY_OPEN: u32 = 59; // FDx 4.3.1, sgfplib.h: Device Exclusive access Error
 
 #[derive(Debug)]
 pub enum SecuGenError {
@@ -55,6 +56,7 @@ impl SecuGenError {
 impl std::fmt::Display for SecuGenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Sdk { function: "SGFPM_OpenDevice", code: SGFDX_ERROR_DEV_ALREADY_OPEN } => f.write_str("SGFPM_OpenDevice: 59 (SGFDX_ERROR_DEV_ALREADY_OPEN: acceso exclusivo; el dispositivo ya está abierto u ocupado)"),
             Self::Sdk { function: "SGFPM_Init", code: 6 } => f.write_str("SGFPM_Init: 6 (DLLLOAD_FAILED_DRV: el SDK no pudo cargar el driver del modelo enumerado; comprobar instalación, arquitectura y dependencias. El código no identifica la DLL ni la causa exacta)"),
             Self::Sdk { function, code } => write!(f, "{function}: {code}"),
             Self::Disconnected => f.write_str("Lector SecuGen no disponible"),
@@ -85,6 +87,7 @@ pub type BOOL = i32;
 #[repr(C)] #[derive(Default, Clone, Copy)] pub struct FingerInfo { pub finger_number: u16, pub view_number: u16, pub impression_type: u16, pub image_quality: u16, }
 
 struct NativeManager {
+    id: u64,
     handle: NonNull<c_void>,
     api: &'static SgfpmApi,
     info: Option<DeviceInfo>,
@@ -129,10 +132,10 @@ impl Drop for NativeManager {
         unsafe {
             if self.needs_close {
                 let code = (self.api.close_device)(self.handle.as_ptr());
-                if code != 0 { eprintln!("[LECTOR] SGFPM_CloseDevice al liberar: {code}; se terminará el manager"); }
+                crate::lector_mensajes::registrar("liberacion", &format!("SGFPM_CloseDevice: {code}; instancia_nativa={} manager={:?}", self.id, self.handle));
             }
             let code = (self.api.terminate)(self.handle.as_ptr());
-            if code != 0 { eprintln!("[LECTOR] SGFPM_Terminate: {code}"); }
+            crate::lector_mensajes::registrar("liberacion", &format!("SGFPM_Terminate: {code}; instancia_nativa={} manager={:?}; apertura_previa={}", self.id, self.handle, self.needs_close));
         }
     }
 }
@@ -177,13 +180,18 @@ static ALGORITHM_LIB: OnceLock<Library> = OnceLock::new();
 static FP_LIB: OnceLock<Library> = OnceLock::new();
 static API: OnceLock<SgfpmApi> = OnceLock::new();
 static GLOBAL_MANAGER: Mutex<Option<NativeManager>> = Mutex::new(None);
+static INSTANCIA_NATIVA: AtomicU64 = AtomicU64::new(1);
+static CONTROLADOR: AtomicU64 = AtomicU64::new(1);
 
 fn create_manager(api: &'static SgfpmApi, usb_generation: u64) -> Result<NativeManager, String> {
+    let id = INSTANCIA_NATIVA.fetch_add(1, Ordering::Relaxed);
+    crate::lector_mensajes::registrar("inicio_manager", &format!("instancia_nativa={id}; generacion_solicitada={usb_generation}; proceso={} bits", usize::BITS));
     unsafe {
         let mut raw = std::ptr::null_mut();
         let code = (api.create)(&mut raw);
+        crate::lector_mensajes::trazar("sdk_resultado", &format!("SGFPM_Create: {code}; instancia_nativa={id}"));
         let mut owner = NonNull::new(raw).map(|handle| NativeManager {
-            handle, api, info: None, needs_close: false, connected: false, usb_generation,
+            id, handle, api, info: None, needs_close: false, connected: false, usb_generation,
             capture_verified: false,
         });
         check_sdk(code, "SGFPM_Create")?;
@@ -201,11 +209,16 @@ fn create_manager(api: &'static SgfpmApi, usb_generation: u64) -> Result<NativeM
         if count != 1 { return Err(format!("El SDK detectó {count} lectores; conecta un solo lector para evitar una selección ambigua")); }
         let device = *devices;
         let code = (api.init)(handle, device.dev_name);
+        crate::lector_mensajes::trazar("sdk_resultado", &format!("SGFPM_Init: {code}; instancia_nativa={id}; modelo={}", device.dev_name));
         check_sdk(code, "SGFPM_Init").map_err(|error| format!("{error}; modelo enumerado={}, proceso={} bits", device.dev_name, usize::BITS))?;
         check_sdk((api.set_template_format)(handle, SG_TEMPLATE_FORMAT_SG400), "SGFPM_SetTemplateFormat")?;
         // Patrón del ejemplo oficial Matching: Init(modelo), Open(USB_AUTO_DETECT).
-        check_sdk((api.open_device)(handle, SG_USB_AUTO_DETECT), "SGFPM_OpenDevice")?;
+        let code = (api.open_device)(handle, SG_USB_AUTO_DETECT);
+        crate::lector_mensajes::trazar("sdk_resultado", &format!("SGFPM_OpenDevice: {code}; instancia_nativa={id}"));
+        check_sdk(code, "SGFPM_OpenDevice")
+            .map_err(|error| format!("{error}; instancia_nativa={id}; modelo_enumerado={} dispositivo_id={} generacion_usb={} proceso={} bits", device.dev_name, device.dev_id, usb_generation, usize::BITS))?;
         manager.needs_close = true;
+        crate::lector_mensajes::registrar("apertura_correcta", &format!("SGFPM_OpenDevice: 0; instancia_nativa={id}; modelo_enumerado={} dispositivo_id={} manager={:?}", device.dev_name, device.dev_id, manager.handle));
         manager.refresh_info().map_err(String::from)?;
         owner.ok_or_else(|| "Manager nulo".into())
     }
@@ -254,10 +267,19 @@ fn ensure_manager(global: &mut Option<NativeManager>, api: &'static SgfpmApi, ge
     Ok(())
 }
 
-pub struct SecuGenController { pub bin_path: PathBuf }
+pub struct SecuGenController { pub bin_path: PathBuf, id: u64 }
+
+impl Drop for SecuGenController {
+    fn drop(&mut self) {
+        crate::lector_mensajes::trazar("controlador_liberado", &format!("controlador_id={}; wrapper_sin_propiedad_del_handle=true", self.id));
+    }
+}
 
 impl SecuGenController {
+    #[track_caller]
     pub fn from_bin_path(bin_path: &Path) -> Result<Self, String> {
+        let id = CONTROLADOR.fetch_add(1, Ordering::Relaxed);
+        crate::lector_mensajes::trazar("controlador_solicitado", &format!("controlador_id={id}; origen={}", std::panic::Location::caller()));
         let mut global = GLOBAL_MANAGER.lock().map_err(|e| e.to_string())?;
         check_running().map_err(String::from)?;
         let api = get_api(bin_path)?;
@@ -266,14 +288,21 @@ impl SecuGenController {
             drop(global.take());
             return Err(error);
         }
-        ensure_manager(&mut global, api, generation).map_err(|error| format!("{error}; SDK={}", bin_path.join("sgfplib.dll").display()))?;
-        Ok(Self { bin_path: bin_path.to_path_buf() })
+        ensure_manager(&mut global, api, generation).map_err(|error| {
+            let detalle = format!("{error}; SDK={}", bin_path.join("sgfplib.dll").display());
+            crate::lector_mensajes::registrar("inicializacion", &detalle);
+            detalle
+        })?;
+        crate::lector_mensajes::trazar("controlador_listo", &format!("controlador_id={id}; instancia_nativa={}", global.as_ref().map(|m| m.id).unwrap_or(0)));
+        Ok(Self { bin_path: bin_path.to_path_buf(), id })
     }
 
     pub fn capturar_template(&self) -> Result<Option<String>, SecuGenError> {
+        crate::lector_mensajes::trazar("captura_esperando_mutex", &format!("controlador_id={}", self.id));
         let api = get_api(&self.bin_path)?;
         let mut guard = GLOBAL_MANAGER.lock().map_err(|e| e.to_string())?;
         let state = guard.as_mut().ok_or(SecuGenError::Disconnected)?;
+        crate::lector_mensajes::trazar("captura_mutex_adquirido", &format!("controlador_id={}; instancia_nativa={}", self.id, state.id));
         let manager = state.connected_handle()?;
         let generation = state.usb_generation;
         if crate::lector_estado::verificar(generation).is_err() {
@@ -290,6 +319,7 @@ impl SecuGenController {
             let image_len = image_len(&info)?;
             let mut image = vec![0u8; image_len];
             let code = (api.get_image_ex)(manager, image.as_mut_ptr(), 4000, std::ptr::null_mut(), 40);
+            crate::lector_mensajes::trazar("sdk_resultado", &format!("SGFPM_GetImageEx: {code}; instancia_nativa={}", state.id));
             // Un timeout no prueba presencia. Comprobar PnP y SDK también después
             // de la espera para no anunciar una recuperación con un handle viejo.
             if crate::lector_estado::verificar(generation).is_err() {
@@ -325,6 +355,7 @@ impl SecuGenController {
     }
 
     pub fn comparar_templates(&self, stored_hex: &str, captured_hex: &str) -> Result<bool, String> {
+        crate::lector_mensajes::trazar("comparacion_esperando_mutex", &format!("controlador_id={}", self.id));
         let mut stored = hex_decode(stored_hex)?;
         let mut captured = hex_decode(captured_hex)?;
         if stored.len() != SG_TEMPLATE_SIZE || captured.len() != SG_TEMPLATE_SIZE {
@@ -332,6 +363,7 @@ impl SecuGenController {
         }
         let api = get_api(&self.bin_path)?;
         let guard = GLOBAL_MANAGER.lock().map_err(|e| e.to_string())?;
+        crate::lector_mensajes::trazar("comparacion_mutex_adquirido", &format!("controlador_id={}; instancia_nativa={}", self.id, guard.as_ref().map(|m| m.id).unwrap_or(0)));
         let manager = guard.as_ref().ok_or("SecuGen desconectado")?.connected_handle()?;
         unsafe {
             let mut matched: BOOL = 0;
@@ -341,6 +373,7 @@ impl SecuGenController {
     }
 
     pub fn identificar_template(&self, conexion: &Connection, template_hex: &str) -> Result<Option<i64>, SecuGenError> {
+        crate::lector_mensajes::trazar("identificacion_inicio", &format!("controlador_id={}", self.id));
         let mut captured = hex_decode(template_hex)?;
         if captured.len() != SG_TEMPLATE_SIZE {
             return Err("Plantilla capturada inválida: se requieren 400 bytes".into());

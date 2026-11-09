@@ -1,6 +1,16 @@
     use super::*;
 
     #[test]
+    fn error_pnp_no_se_publica_en_estado_lector() {
+        let mut usb = UsbTracker::default();
+        usb.update(Err(r"Consulta PnP: 13; C:\privado\driver.dll".into()));
+        let mut estado = consultar();
+        aplicar_usb(&mut estado, &usb);
+        assert_eq!(estado.detalle, crate::lector_mensajes::INICIO);
+        assert!(!estado.usb_presente);
+    }
+
+    #[test]
     fn reinsertion_invalidates_old_manager_even_for_same_device() {
         let mut usb = UsbTracker::default();
         let ids = vec!["USB\\VID_1162&PID_2200\\reader".into()];

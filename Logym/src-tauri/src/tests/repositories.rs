@@ -1,4 +1,81 @@
     use super::*;
+    fn sin_huella(plan: i64) -> DatosCliente {
+        let mut d = crate::test_support::cliente(plan);
+        d.sin_huella = true;
+        d.template_huella.clear();
+        d.fecha_inicio_membresia = chrono::Local::now().format("%Y-%m-%d").to_string();
+        d.fecha_fin_membresia = (chrono::Local::now() + chrono::Duration::days(30)).format("%Y-%m-%d").to_string();
+        d
+    }
+
+    #[test]
+    fn alta_sin_huella_persiste_null_y_conserva_base_existente_al_reabrir() {
+        use crate::test_support::*;
+        let temp = TempDb::new();
+        let db = temp.connect();
+        crate::database::inicializar_esquema(&db).unwrap();
+        let anterior = vigente(&db);
+        registrar_asistencia(&db, anterior).unwrap();
+        let snapshot = |conn: &Connection| {
+            let mut tablas = Vec::new();
+            for tabla in ["clientes", "pagos", "membresias_historial", "asistencias"] {
+                let col = if tabla == "clientes" { "id" } else { "cliente_id" };
+                let mut stmt = conn.prepare(&format!("SELECT * FROM {tabla} WHERE {col}=?1 ORDER BY id")).unwrap();
+                let n = stmt.column_count();
+                tablas.push(stmt.query_map([anterior], |r| (0..n).map(|i| r.get::<_, rusqlite::types::Value>(i)).collect::<rusqlite::Result<Vec<_>>>()).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap());
+            }
+            tablas
+        };
+        let antes = snapshot(&db);
+        let p = plan(&db, "Mensual");
+        for _ in 0..2 {
+            guardar_cliente_sin_duplicar(&db, sin_huella(p), |_, _| panic!("SDK innecesario")).unwrap();
+        }
+        assert_eq!(snapshot(&db), antes);
+        drop(db);
+        let db = temp.connect();
+        crate::database::inicializar_esquema(&db).unwrap();
+        assert_eq!(snapshot(&db), antes);
+        assert_eq!(counts(&db), (3,3,3,1));
+        assert_eq!(db.query_row("SELECT count(*) FROM clientes WHERE template_huella IS NULL", [], |r| r.get::<_,i64>(0)).unwrap(), 2);
+        assert_eq!(db.query_row("SELECT sum(total_centavos) FROM pagos", [], |r| r.get::<_,i64>(0)).unwrap(), 150000);
+        assert_eq!(db.query_row("PRAGMA user_version", [], |r| r.get::<_,i64>(0)).unwrap(), 1);
+    }
+
+    #[test]
+    fn asistencia_sin_huella_reutiliza_restricciones_y_duplicados_entre_metodos() {
+        use crate::test_support::*;
+        let db = crate::test_support::db();
+        let id = guardar_cliente_sin_duplicar(&db, sin_huella(plan(&db,"Mensual")), |_,_| panic!("SDK")).unwrap();
+        registrar_asistencia(&db, id).unwrap();
+        assert!(registrar_asistencia(&db,id).unwrap_err().contains("Ya registró"));
+        let bio = vigente(&db);
+        // El supervisor biométrico y el comando manual llaman al mismo repositorio.
+        registrar_asistencia(&db,bio).unwrap();
+        assert!(registrar_asistencia(&db,bio).unwrap_err().contains("Ya registró"));
+        for (inicio, fin, activo, error) in [
+            ("-30 days","-1 day",1,"vencida"),
+            ("+1 day","+30 days",1,"pendiente"),
+            ("-1 day","+30 days",0,"desactivado"),
+        ] {
+            db.execute("UPDATE clientes SET fecha_inicio_membresia=date('now','localtime',?1),fecha_fin_membresia=date('now','localtime',?2),activo=?3 WHERE id=?4",params![inicio,fin,activo,id]).unwrap();
+            assert!(registrar_asistencia(&db,id).unwrap_err().contains(error));
+        }
+        assert_eq!(counts(&db), (2,2,2,2));
+    }
+
+    #[test]
+    fn alta_sin_huella_revierte_cliente_historial_y_pago_ante_error() {
+        use crate::test_support::*;
+        let db = crate::test_support::db();
+        let anterior = vigente(&db);
+        let antes = counts(&db);
+        db.execute_batch("CREATE TRIGGER fallo_pago BEFORE INSERT ON pagos BEGIN SELECT RAISE(ABORT,'fallo simulado'); END;").unwrap();
+        assert!(guardar_cliente_sin_duplicar(&db,sin_huella(plan(&db,"Mensual")),|_,_|panic!("SDK")).is_err());
+        assert_eq!(counts(&db),antes);
+        assert!(db.is_autocommit());
+        assert!(registrar_asistencia(&db,anterior).is_ok());
+    }
     // Fixture de negocio sin dispositivo; el INSERT real es el de producción.
     pub fn guardar_cliente(conexion: &Connection, datos: DatosCliente) -> Result<i64,String> {
         let tx=conexion.unchecked_transaction().map_err(|e|e.to_string())?;

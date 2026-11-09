@@ -74,6 +74,22 @@ const inscripcion = ref(0)
 const nuevo = ref({ nombre:'', meses:1, precio_pesos:0, activo:true })
 const moneda = n => (n/100).toLocaleString('es-MX',{style:'currency',currency:'MXN'})
 const aCentavos = n => Math.round(Number(n)*100)
+function mensajeErrorAdministracion(error, alternativa) {
+  const texto = error instanceof Error ? error.message : error
+  const permitidos = [
+    'Las contraseñas no coinciden',
+    'La contraseña debe tener entre 12 y 128 caracteres',
+    'Ya existe una contraseña administrativa',
+    'Configura primero la contraseña administrativa',
+    'Contraseña incorrecta',
+    'Datos de membresía inválidos',
+    'Plan no encontrado',
+    'Precio inválido',
+    'Selecciona un rango de fechas válido (inicio no posterior al fin)',
+    'Periodo inválido'
+  ]
+  return permitidos.includes(texto) ? texto : alternativa
+}
 async function cargar() {
   planes.value = (await listarPlanesAdmin(password.value)).map(p => ({...p, precio_pesos:p.precio_centavos/100}))
   inscripcion.value = (await obtenerPrecioInscripcion())/100
@@ -87,7 +103,11 @@ async function cargarFinanzas() {
   errorFinanzas.value = ''
   cargandoFinanzas.value = true
   try { resumenFinanzas.value = await reporteFinanciero(fechaInicio.value, fechaFin.value, password.value) }
-  catch (e) { resumenFinanzas.value = null; errorFinanzas.value = String(e) }
+  catch (e) {
+    console.error('Error al consultar el reporte financiero:', e)
+    resumenFinanzas.value = null
+    errorFinanzas.value = mensajeErrorAdministracion(e, 'No se pudo consultar el reporte financiero. Intenta nuevamente.')
+  }
   finally { cargandoFinanzas.value = false }
 }
 function cambiarPestaña(valor) {
@@ -105,7 +125,10 @@ async function entrar() {
     } else await validarPasswordAdmin(password.value)
     autorizado.value=true
     await cargar()
-  } catch(e) { mensaje.value=String(e) }
+  } catch(e) {
+    console.error('Error al abrir la administración de precios:', e)
+    mensaje.value = mensajeErrorAdministracion(e, 'No se pudo abrir la administración de precios. Intenta nuevamente.')
+  }
 }
 async function guardarPlan(plan) {
   mensaje.value=''
@@ -114,7 +137,10 @@ async function guardarPlan(plan) {
     await guardarPlanAdmin(password.value,{ id:id||null, nombre, meses:Number(duracion_meses||meses), precioCentavos:aCentavos(precio_pesos), activo })
     await cargar()
     mensaje.value='Plan guardado. Los cobros anteriores permanecen intactos.'
-  } catch(e) { mensaje.value=String(e) }
+  } catch(e) {
+    console.error('Error al guardar el plan:', e)
+    mensaje.value = mensajeErrorAdministracion(e, 'No se pudo guardar el plan. Revisa los datos e intenta nuevamente.')
+  }
 }
 async function crearPlan() {
   await guardarPlan(nuevo.value)
@@ -123,7 +149,10 @@ async function guardarInscripcion() {
   try {
     await guardarInscripcionAdmin(password.value,aCentavos(inscripcion.value))
     mensaje.value='Precio de inscripción actualizado para los próximos registros.'
-  } catch(e) { mensaje.value=String(e) }
+  } catch(e) {
+    console.error('Error al guardar el precio de inscripción:', e)
+    mensaje.value = mensajeErrorAdministracion(e, 'No se pudo actualizar el precio de inscripción. Intenta nuevamente.')
+  }
 }
 async function consultarEstadoAdmin() {
   consultando.value = true
@@ -133,7 +162,8 @@ async function consultarEstadoAdmin() {
   try {
     configurado.value = await adminConfigurado()
   } catch (e) {
-    mensaje.value = `No se pudo consultar la configuración administrativa: ${String(e)}`
+    console.error('Error al consultar la configuración administrativa:', e)
+    mensaje.value = 'No se pudo consultar la configuración administrativa. Intenta nuevamente.'
   } finally {
     consultando.value = false
   }

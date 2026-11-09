@@ -9,7 +9,7 @@ pub use pruebas::guardar_cliente;
 pub fn guardar_cliente_sin_duplicar(conexion: &Connection, datos: DatosCliente,
     mut comparar: impl FnMut(&str,&str) -> Result<bool,String>) -> Result<i64,String> {
     let tx = rusqlite::Transaction::new_unchecked(conexion,rusqlite::TransactionBehavior::Immediate).map_err(|e|e.to_string())?;
-    {
+    if !datos.sin_huella {
         let mut stmt = tx.prepare("SELECT id,template_huella FROM clientes WHERE COALESCE(template_huella,'')<>'' ORDER BY id").map_err(|e|e.to_string())?;
         let mut rows = stmt.query([]).map_err(|e|e.to_string())?;
         while let Some(row) = rows.next().map_err(|e|e.to_string())? {
@@ -41,7 +41,7 @@ fn insertar_cliente(conexion: &Connection, datos: DatosCliente) -> Result<i64,St
     tx.execute(
         "INSERT INTO clientes (nombre, telefono, telefono_emergencia, fecha_registro, fecha_inicio_membresia, fecha_fin_membresia, foto_base64, template_huella)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![ datos.nombre, datos.telefono, datos.telefono_emergencia, datos.fecha_registro, datos.fecha_inicio_membresia, datos.fecha_fin_membresia, datos.foto_base64, datos.template_huella ],
+        params![ datos.nombre, datos.telefono, datos.telefono_emergencia, datos.fecha_registro, datos.fecha_inicio_membresia, datos.fecha_fin_membresia, datos.foto_base64, if datos.sin_huella { None } else { Some(datos.template_huella) } ],
     ).map_err(|e| e.to_string())?;
     let id = tx.last_insert_rowid();
     tx.execute(

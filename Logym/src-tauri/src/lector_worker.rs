@@ -11,8 +11,10 @@ static INICIADO: OnceLock<()> = OnceLock::new();
 static RECONEXION: Mutex<()> = Mutex::new(());
 
 pub fn pausar(pausado: bool) {
+    crate::lector_mensajes::trazar("pausa_solicitada", &format!("pausado={pausado}"));
     let _guard = RECONEXION.lock().unwrap_or_else(|e| e.into_inner());
     PAUSADO.store(pausado, Ordering::SeqCst);
+    crate::lector_mensajes::trazar("pausa_aplicada", &format!("pausado={pausado}; una_captura_en_curso_puede_terminar=true"));
 }
 
 pub fn inicializar_lector(bin_path: &std::path::Path) -> Result<Option<crate::secugen::SecuGenController>, String> {
@@ -27,11 +29,13 @@ static CIERRE: AtomicBool = AtomicBool::new(false);
 // La UI solo solicita el cierre; el coordinador espera fuera del event loop.
 pub fn cerrar(app: AppHandle) {
     if CIERRE.swap(true, Ordering::SeqCst) { return; }
+    crate::lector_mensajes::trazar("cierre_solicitado", "Se esperará el fin del supervisor antes de liberar el SDK");
     crate::secugen::request_shutdown();
     std::thread::spawn(move || {
         let threads = std::mem::take(&mut *THREADS.lock().unwrap_or_else(|e| e.into_inner()));
         for thread in threads { let _ = thread.join(); }
         crate::secugen::shutdown();
+        crate::lector_mensajes::trazar("cierre_completado", "Supervisor finalizado y manager liberado");
         app.exit(0);
     });
 }
@@ -130,7 +134,7 @@ pub fn iniciar(app: AppHandle) {
                     if PAUSADO.load(Ordering::SeqCst) { continue; }
                     let mensaje = e.to_string();
                     if mensaje != ultimo_error || ultimo_log.elapsed() >= Duration::from_secs(60) {
-                        eprintln!("[LECTOR] {mensaje}");
+                        crate::lector_mensajes::registrar("supervisor", &mensaje);
                         ultimo_error = mensaje.clone();
                         ultimo_log = std::time::Instant::now();
                     }

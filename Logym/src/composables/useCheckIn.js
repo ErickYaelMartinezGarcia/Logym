@@ -1,8 +1,9 @@
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/tauri'
 import { useRouter } from 'vue-router'
-import { pausarLectorGlobal, renovarMembresia, listarTiposMembresia } from '../services/tauriApi'
+import { mensajeErrorAsistencia, mensajeErrorRenovacion } from '../services/mensajesLector'
+import { pausarLectorGlobal, renovarMembresia, listarTiposMembresia, buscarClientesCheckin, registrarAsistencia } from '../services/tauriApi'
 
 /**
  * Vista del lector global. El backend captura y registra asistencias incluso
@@ -21,6 +22,96 @@ export function useCheckIn() {
   const confirmandoRenovacion = ref(false)
   const lectorActivo = ref(false)
   const estadoLector = ref('inicializando')
+  const consultaManual = ref('')
+  const resultadosManual = ref([])
+  const clienteManual = ref(null)
+  const buscandoManual = ref(false)
+  const registrandoManual = ref(false)
+  const mensajeManual = ref('')
+  const busquedaAbierta = ref(false)
+  const modalManual = ref(false)
+  const asistenciaManualRegistrada = ref(false)
+  const lecturasPendientes = ref(0)
+  const colaLecturas = []
+  let lectorPausadoPorEvento = false
+  let regresoLectorTimer = null
+  let revisionBusqueda = 0
+  watch(consultaManual, () => {
+    revisionBusqueda++
+    buscandoManual.value = false
+    resultadosManual.value = []
+    clienteManual.value = null
+    mensajeManual.value = ''
+  }, { flush: 'sync' })
+
+  async function buscarManual() {
+    if (registrandoManual.value || modalAbierta.value) return
+    const revision = ++revisionBusqueda
+    resultadosManual.value = []
+    clienteManual.value = null
+    mensajeManual.value = ''
+    if (!consultaManual.value.trim()) return
+    busquedaAbierta.value = true
+    buscandoManual.value = true
+    try {
+      const clientes = await buscarClientesCheckin(consultaManual.value.trim())
+      if (desmontado || revision !== revisionBusqueda) return
+      resultadosManual.value = clientes
+      mensajeManual.value = clientes.length ? 'Selecciona al cliente y verifica su identidad. Máximo 30 resultados; precisa la búsqueda si es necesario.' : 'No se encontraron clientes activos.'
+    } catch (error) {
+      console.error('Error al buscar cliente para asistencia manual:', error)
+      if (revision === revisionBusqueda) mensajeManual.value = 'No se pudo buscar al cliente. Intenta nuevamente.'
+    } finally {
+      if (revision === revisionBusqueda) buscandoManual.value = false
+    }
+  }
+
+  function seleccionarManual(cliente) {
+    if (modalAbierta.value || registrandoManual.value || !resultadosManual.value.includes(cliente)) return
+    clienteManual.value = cliente
+    clienteDetectado.value = cliente
+    modalManual.value = true
+    modalAbierta.value = true
+    asistenciaManualRegistrada.value = false
+    confirmandoRenovacion.value = false
+    estadoCheckin.value = 'idle'
+    mensaje.value = 'Verifica la fotografía y los datos del cliente antes de registrar su asistencia.'
+  }
+
+  async function confirmarManual() {
+    if (!modalManual.value || !clienteManual.value || registrandoManual.value || asistenciaManualRegistrada.value) return
+    const cliente = clienteManual.value
+    registrandoManual.value = true
+    try {
+      const resultado = await registrarAsistencia(cliente.id)
+      if (desmontado) return
+      estadoCheckin.value = 'success'
+      mensaje.value = `${resultado}: ${cliente.nombre} (ID #${cliente.id}).`
+      asistenciaManualRegistrada.value = true
+      regresoLectorTimer = setTimeout(() => {
+        cerrarModal().catch(console.error)
+      }, 2000)
+    } catch (error) {
+      console.error('Error al registrar asistencia manual:', error)
+      if (!desmontado) {
+        estadoCheckin.value = 'error'
+        mensaje.value = `No se registró asistencia: ${mensajeErrorAsistencia(error)}`
+      }
+    } finally {
+      registrandoManual.value = false
+    }
+  }
+
+  function cancelarBusqueda() {
+    if (registrandoManual.value) return
+    revisionBusqueda++
+    consultaManual.value = ''
+    resultadosManual.value = []
+    clienteManual.value = null
+    buscandoManual.value = false
+    mensajeManual.value = ''
+    busquedaAbierta.value = false
+  }
   let dejarDeEscuchar = null
   let dejarDeEscucharEstado = null
   let consultaLectorTimer = null
@@ -66,10 +157,28 @@ export function useCheckIn() {
   }
   async function recibirLectura(evento) {
     const { cliente, resultado } = evento.payload || {}
-    if (!cliente) return
+    if (!cliente || desmontado) return
+    // El backend ya resolvió esta lectura. Conservar cada resultado, incluso
+    // si llega durante una confirmación manual o hay otra modal abierta.
+    colaLecturas.push({ cliente, resultado })
+    lecturasPendientes.value = colaLecturas.length
+    if (!modalAbierta.value) mostrarSiguienteLectura()
+    if (!lectorPausadoPorEvento) {
+      lectorPausadoPorEvento = true
+      try { await pausarLectorGlobal(true) }
+      catch (error) {
+        lectorPausadoPorEvento = false
+        console.error('No se pudo pausar la presentación biométrica:', error)
+      }
+    }
+  }
+  function mostrarSiguienteLectura() {
+    const { cliente, resultado } = colaLecturas.shift()
+    lecturasPendientes.value = colaLecturas.length
+    modalManual.value = false
+    confirmandoRenovacion.value = false
     clienteDetectado.value = cliente
     modalAbierta.value = true
-    await pausarLectorGlobal(true)
     if (resultado === 'registrada') {
       estadoCheckin.value = 'success'
       mensaje.value = `Asistencia registrada: ${cliente.nombre}`
@@ -82,7 +191,7 @@ export function useCheckIn() {
         ? `Membresía pendiente. Comienza el ${formatearFecha(cliente.fecha_inicio_membresia)}.`
         : resultado === 'membresia_vencida'
         ? 'Membresía vencida. Renueva para ingresar.'
-        : `No se registró asistencia: ${String(resultado).replace(/^error:\s*/i, '')}`
+        : `No se registró asistencia: ${mensajeErrorAsistencia(resultado)}`
     }
   }
   async function capturarAcceso() {
@@ -90,16 +199,26 @@ export function useCheckIn() {
     mensaje.value = 'El lector permanece activo. Coloca tu huella en el sensor.'
   }
   async function cerrarModal() {
+    if (registrandoManual.value) return
+    clearTimeout(regresoLectorTimer)
+    if (modalManual.value) cancelarBusqueda()
+    modalManual.value = false
+    asistenciaManualRegistrada.value = false
     modalAbierta.value = false
     confirmandoRenovacion.value = false
     clienteDetectado.value = null
     estadoCheckin.value = 'idle'
     mensaje.value = 'Coloca tu huella para validar tu acceso'
-    await pausarLectorGlobal(false)
+    if (colaLecturas.length) {
+      mostrarSiguienteLectura()
+    } else if (lectorPausadoPorEvento) {
+      lectorPausadoPorEvento = false
+      await pausarLectorGlobal(false)
+    }
   }
-  function solicitarRenovacion() { confirmandoRenovacion.value = true }
+  function solicitarRenovacion() { if (!modalManual.value) confirmandoRenovacion.value = true }
   async function renovar() {
-    if (!clienteDetectado.value || procesandoRenovacion.value || !tipoMembresiaId.value) return
+    if (modalManual.value || !clienteDetectado.value || procesandoRenovacion.value || !tipoMembresiaId.value) return
     procesandoRenovacion.value = true
     try {
       clienteDetectado.value = await renovarMembresia(clienteDetectado.value.id, Number(tipoMembresiaId.value))
@@ -107,8 +226,9 @@ export function useCheckIn() {
       confirmandoRenovacion.value = false
       mensaje.value = `Membresía renovada para ${clienteDetectado.value.nombre}. Vigente hasta ${formatearFecha(clienteDetectado.value.fecha_fin_membresia)}.`
     } catch (error) {
+      console.error('Error al renovar desde check-in:', error)
       estadoCheckin.value = 'error'
-      mensaje.value = `No se pudo renovar: ${String(error)}`
+      mensaje.value = mensajeErrorRenovacion(error)
     } finally {
       procesandoRenovacion.value = false
     }
@@ -122,18 +242,30 @@ export function useCheckIn() {
     try {
       tiposMembresia.value = (await listarTiposMembresia()).filter(plan => !plan.solo_alta)
       if (tiposMembresia.value.length) tipoMembresiaId.value = String(tiposMembresia.value[0].id)
-    } catch (error) { mensaje.value = `No se pudieron cargar las membresías: ${String(error)}` }
+    } catch (error) {
+      console.error('Error al cargar membresías en check-in:', error)
+      mensaje.value = 'No se pudieron cargar las membresías. Intenta nuevamente.'
+    }
     try { dejarDeEscuchar = await listen('logym://checkin', recibirLectura) }
-    catch (error) { mensaje.value = `No se pudo escuchar el lector: ${String(error)}` }
+    catch (error) {
+      console.error('Error al escuchar el lector:', error)
+      mensaje.value = 'No se pudo recibir información del lector. Intenta nuevamente.'
+    }
   })
   onBeforeUnmount(() => {
     desmontado = true
+    revisionBusqueda++
+    clearTimeout(regresoLectorTimer)
+    colaLecturas.length = 0
     clearInterval(consultaLectorTimer)
     dejarDeEscucharEstado?.()
     dejarDeEscuchar?.()
-    if (modalAbierta.value) pausarLectorGlobal(false).catch(console.error)
+    if (lectorPausadoPorEvento) pausarLectorGlobal(false).catch(console.error)
   })
   return {
+    consultaManual, resultadosManual, clienteManual, buscandoManual, registrandoManual, mensajeManual,
+    busquedaAbierta, modalManual, asistenciaManualRegistrada, lecturasPendientes,
+    buscarManual, seleccionarManual, confirmarManual, cancelarBusqueda,
     tiposMembresia, tipoMembresiaId,
     router, mensaje, estadoCheckin, cargando, procesandoRenovacion, clienteDetectado,
     modalAbierta, confirmandoRenovacion, lectorActivo, estadoLector, formatearFecha, etiquetaEstado,

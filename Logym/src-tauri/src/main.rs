@@ -5,6 +5,7 @@ mod database;
 mod models;
 mod lector_worker;
 mod lector_estado;
+mod lector_mensajes;
 mod licencia;
 mod membresias;
 mod repositories;
@@ -22,10 +23,12 @@ use commands::{
     actualizar_cliente, establecer_cliente_activo, eliminar_cliente_definitivamente,
     buscar_cliente_por_huella, capturar_huella, comparar_huella, check_in, guardar_cliente, inicializar_db,
     listar_clientes, listar_clientes_membresia, obtener_metricas,
-    renovar_membresia, registrar_asistencia,
+    renovar_membresia, registrar_asistencia, buscar_clientes_checkin,
 };
 
 fn main() {
+    let inicio_arranque = std::time::Instant::now();
+    eprintln!("[ARRANQUE] pid={} fase=proceso_iniciado tiempo_ms=0", std::process::id());
     #[cfg(windows)]
     if std::env::args().nth(1).as_deref()==Some("--diagnostico-licencia") {
         let archivo=std::env::args_os().nth(2).map(std::path::PathBuf::from);
@@ -49,12 +52,16 @@ fn main() {
     }));
 
     tauri::Builder::default()
-        .setup(|app| {
-            if licencia::verificar(&app.handle()).is_err() {
+        .setup(move |app| {
+            eprintln!("[ARRANQUE] pid={} fase=setup_inicio tiempo_ms={}", std::process::id(), inicio_arranque.elapsed().as_millis());
+            let verificacion = licencia::verificar(&app.handle());
+            eprintln!("[ARRANQUE] pid={} fase=verificacion_finalizada tiempo_ms={}", std::process::id(), inicio_arranque.elapsed().as_millis());
+            if verificacion.is_err() {
                 println!("[LICENCIA] Activación requerida");
                 lector_worker::iniciar(app.handle());
                 return Ok(());
             }
+            eprintln!("[ARRANQUE] pid={} fase=almacenamiento_inicio tiempo_ms={}", std::process::id(), inicio_arranque.elapsed().as_millis());
 
             match database::abrir_db(&app.handle()) {
                 Ok(conn) => {
@@ -66,8 +73,16 @@ fn main() {
                 }
                 Err(e) => eprintln!("[DB] Error: {}", e),
             }
+            eprintln!("[ARRANQUE] pid={} fase=almacenamiento_finalizado tiempo_ms={}", std::process::id(), inicio_arranque.elapsed().as_millis());
             lector_worker::iniciar(app.handle());
+            eprintln!("[ARRANQUE] pid={} fase=setup_finalizado tiempo_ms={}", std::process::id(), inicio_arranque.elapsed().as_millis());
             Ok(())
+        })
+        .on_page_load(move |window, _| {
+            eprintln!("[ARRANQUE] pid={} fase=documento_cargado tiempo_ms={}", std::process::id(), inicio_arranque.elapsed().as_millis());
+            if let Err(error) = window.show() {
+                eprintln!("[ARRANQUE] No se pudo mostrar la ventana: {error}");
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::listar_planes_admin, commands::admin_configurado, commands::crear_password_admin, commands::validar_password_admin,
@@ -89,6 +104,7 @@ fn main() {
             renovar_membresia,
             // API de asistencia invocada desde el frontend; registrarla evita código inaccesible.
             registrar_asistencia,
+            buscar_clientes_checkin,
             obtener_metricas,
             capturar_huella,
             comparar_huella,

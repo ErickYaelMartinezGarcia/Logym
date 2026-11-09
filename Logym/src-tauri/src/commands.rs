@@ -4,6 +4,12 @@ use crate::licencia;
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]
+pub fn buscar_clientes_checkin(app: AppHandle, consulta: String) -> Result<Vec<crate::models::ClienteCheckIn>, String> {
+    licencia::verificar(&app)?;
+    services::buscar_clientes_checkin(&app, consulta)
+}
+
+#[tauri::command]
 pub fn inicializar_db(app: AppHandle) -> Result<String, String> { licencia::verificar(&app)?; services::inicializar_db(&app) }
 #[tauri::command]
 pub async fn guardar_cliente(app: AppHandle, cliente: DatosCliente) -> Result<i64, String> {
@@ -19,11 +25,19 @@ pub fn listar_clientes(app: AppHandle) -> Result<Vec<crate::models::ClienteTabla
 #[tauri::command]
 pub fn listar_clientes_membresia(app: AppHandle) -> Result<Vec<crate::models::ClienteMembresia>, String> { licencia::verificar(&app)?; services::listar_clientes_membresia(&app) }
 #[tauri::command]
-pub fn buscar_cliente_por_huella(app: AppHandle) -> Result<Option<crate::models::ClienteCheckIn>, String> { licencia::verificar(&app)?; services::buscar_cliente_por_huella(&app) }
+pub fn buscar_cliente_por_huella(app: AppHandle) -> Result<Option<crate::models::ClienteCheckIn>, String> { licencia::verificar(&app)?; services::buscar_cliente_por_huella(&app).map_err(|error| crate::lector_mensajes::error_publico("busqueda_biometrica", error)) }
 #[tauri::command]
-pub fn check_in(app: AppHandle) -> Result<Option<crate::models::ClienteCheckIn>, String> { licencia::verificar(&app)?; services::check_in(&app) }
+pub fn check_in(app: AppHandle) -> Result<Option<crate::models::ClienteCheckIn>, String> { licencia::verificar(&app)?; services::check_in(&app).map_err(|error| crate::lector_mensajes::error_publico("checkin_biometrico", error)) }
 #[tauri::command]
-pub fn registrar_asistencia(app: AppHandle, cliente_id: i64) -> Result<String, String> { { licencia::verificar(&app)?; let result = services::registrar_asistencia(&app, cliente_id)?; let _ = app.emit_all("logym://datos-actualizados", "asistencia"); Ok(result) } }
+pub async fn registrar_asistencia(app: AppHandle, cliente_id: i64) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        licencia::verificar(&app)?;
+        let conn = crate::database::abrir_db(&app)?;
+        let result = services::registrar_asistencia_manual(&conn, cliente_id)?;
+        let _ = app.emit_all("logym://datos-actualizados", "asistencia");
+        Ok(result)
+    }).await.map_err(|e| format!("No se pudo completar la asistencia: {e}"))?
+}
 #[tauri::command]
 pub fn renovar_membresia(app: AppHandle, datos: DatosRenovacion) -> Result<crate::models::ClienteCheckIn, String> { { licencia::verificar(&app)?; let result = services::renovar_membresia(&app, datos)?; let _ = app.emit_all("logym://datos-actualizados", "membresia"); Ok(result) } }
 #[tauri::command]
@@ -31,13 +45,13 @@ pub fn obtener_metricas(app: AppHandle) -> Result<crate::models::Metricas, Strin
 #[tauri::command]
 pub fn capturar_huella(app: AppHandle) -> Result<Option<String>, String> {
     licencia::verificar(&app)?;
-    services::capturar_huella(&app)
+    services::capturar_huella(&app).map_err(|error| crate::lector_mensajes::error_publico("captura_registro", error))
 }
 
 #[tauri::command]
 pub fn comparar_huella(app: AppHandle, t1: String, t2: String) -> Result<bool, String> {
     licencia::verificar(&app)?;
-    services::comparar_huella(&app, &t1, &t2)
+    services::comparar_huella(&app, &t1, &t2).map_err(|error| crate::lector_mensajes::error_publico("comparacion_registro", error))
 }
 
 #[tauri::command]

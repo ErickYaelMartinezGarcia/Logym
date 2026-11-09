@@ -58,6 +58,12 @@ pub fn consultar() -> EstadoLector {
 
 pub fn publicar(app: &AppHandle, estado: Estado, detalle: impl Into<String>) {
     let detalle = detalle.into();
+    let detalle = match estado {
+        Estado::NoDisponible => crate::lector_mensajes::publico(&detalle),
+        Estado::Inicializando => "Comprobando el lector de huellas.",
+        Estado::Recuperando => "Comprobando el lector de huellas.",
+        Estado::Disponible => "El lector de huellas está listo.",
+    }.to_string();
     let mut current = ESTADO.lock().unwrap_or_else(|e| e.into_inner());
     if current.estado == estado && current.detalle == detalle { return; }
     current.estado = estado;
@@ -81,8 +87,8 @@ pub fn verificar(generation: u64) -> Result<(), String> {
 fn aplicar_evidencia(current: &mut EstadoLector, usb: &UsbTracker, generation: u64, captura: bool) -> bool {
     if !usb.ready(generation) { return false; }
     let estado = if captura { Estado::Disponible } else { Estado::Recuperando };
-    let detalle = if captura { "Captura comprobada por el SDK" }
-        else { "USB presente y SDK inicializado; coloca el dedo para comprobar la captura" };
+    let detalle = if captura { "El lector de huellas está listo." }
+        else { "Coloca el dedo para comprobar que el lector está listo." };
     if current.estado == estado && current.detalle == detalle && current.sdk_inicializado
         && current.captura_comprobada == captura { return false; }
     current.estado = estado;
@@ -108,12 +114,12 @@ fn aplicar_usb(current: &mut EstadoLector, usb: &UsbTracker) {
     current.usb_presente = usb.ready(usb.generation);
     current.sdk_inicializado = false;
     current.captura_comprobada = false;
-    let (estado, detalle) = if let Some(error) = &usb.error {
-        (Estado::NoDisponible, error.clone())
+    let (estado, detalle) = if usb.error.is_some() {
+        (Estado::NoDisponible, crate::lector_mensajes::INICIO.into())
     } else if !current.usb_presente {
-        (Estado::NoDisponible, "Windows no detecta un lector USB SecuGen. Revisa la conexión USB.".into())
+        (Estado::NoDisponible, "No se detecta el lector de huellas. Verifica su conexión USB.".into())
     } else {
-        (Estado::Recuperando, "Windows detecta el lector; comprobando el SDK".into())
+        (Estado::Recuperando, "Comprobando el lector de huellas.".into())
     };
     current.estado = estado;
     current.detalle = detalle;
@@ -158,6 +164,7 @@ fn dispositivos_presentes() -> Result<Vec<String>, String> {
 pub fn iniciar_monitor(app: AppHandle) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || while !crate::secugen::stopping() {
         let result = dispositivos_presentes();
+        if let Err(error) = &result { crate::lector_mensajes::registrar("consulta_usb", error); }
         // Este hilo nunca llama al SDK ni toma GLOBAL_MANAGER: puede avisar
         // de una retirada incluso mientras GetImageEx espera en otro hilo.
         let mut usb = USB.lock().unwrap_or_else(|e| e.into_inner());

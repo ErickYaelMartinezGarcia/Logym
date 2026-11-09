@@ -13,7 +13,7 @@ const {
   tiposMembresia, tipoMembresiaId, incluirInscripcion, precioInscripcion,
   nombre, telefono, fechaRegistro, fechaInicioMembresia, fechaFinMembresia,
   telefonoEmergencia,
-  template1, template2, capturandoHuella, guardando, mensaje, tipoMensaje, videoRef, canvasRef, fotoBase64,
+  sinHuella, template1, template2, capturandoHuella, guardando, mensaje, tipoMensaje, videoRef, canvasRef, fotoBase64,
   camaraActiva, camaraDisponible, iniciarCamara, detenerCamara, capturarFoto, repetirFoto,
   capturarHuellaCliente, guardar: guardarCliente
 } = registro
@@ -53,8 +53,15 @@ const {
             <strong class="total-cobro">{{ (((tiposMembresia.find(p => String(p.id) === tipoMembresiaId)?.precio_centavos || 0) + (incluirInscripcion ? precioInscripcion : 0)) / 100).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) }}</strong>
           </div>
         </div>
-        <div class="capture-row"><button class="capture-card" :class="{ done: template1 }" :disabled="capturandoHuella || guardando" @click="capturarHuellaCliente(1)"><span class="capture-icon">01</span><span><strong>{{ template1 ? 'Huella guardada' : 'Primera huella' }}</strong><small>{{ template1 ? 'Captura completa' : 'Coloca el dedo en el lector' }}</small></span><b>›</b></button><button class="capture-card" :class="{ done: template2 }" :disabled="!template1 || capturandoHuella || guardando" @click="capturarHuellaCliente(2)"><span class="capture-icon">02</span><span><strong>{{ template2 ? 'Huella confirmada' : 'Confirmación' }}</strong><small>{{ template2 ? 'Captura completa' : 'Repite la misma huella' }}</small></span><b>›</b></button></div>
-        <button class="primary-button" :disabled="guardando || capturandoHuella || !template1 || !template2" @click="guardarCliente">Guardar miembro <span>→</span></button>
+        <label class="field-label">Modalidad de registro
+          <select v-model="sinHuella" class="plan-select" :disabled="capturandoHuella || guardando">
+            <option :value="false">Registrar con huella</option>
+            <option :value="true">Registrar sin huella</option>
+          </select>
+        </label>
+        <p v-if="sinHuella" class="muted">No se capturará huella. Sus asistencias requerirán confirmación manual del operador.</p>
+        <div v-if="!sinHuella" class="capture-row"><button class="capture-card" :class="{ done: template1 }" :disabled="capturandoHuella || guardando" @click="capturarHuellaCliente(1)"><span class="capture-icon">01</span><span><strong>{{ template1 ? 'Huella guardada' : 'Primera huella' }}</strong><small>{{ template1 ? 'Captura completa' : 'Coloca el dedo en el lector' }}</small></span><b>›</b></button><button class="capture-card" :class="{ done: template2 }" :disabled="!template1 || capturandoHuella || guardando" @click="capturarHuellaCliente(2)"><span class="capture-icon">02</span><span><strong>{{ template2 ? 'Huella confirmada' : 'Confirmación' }}</strong><small>{{ template2 ? 'Captura completa' : 'Repite la misma huella' }}</small></span><b>›</b></button></div>
+        <button class="primary-button" :disabled="guardando || capturandoHuella || (!sinHuella && (!template1 || !template2))" @click="guardarCliente">Guardar miembro <span>→</span></button>
         <p class="feedback" :class="`feedback--${tipoMensaje}`">{{ mensaje }}</p>
       </section>
       <section class="surface form-panel">

@@ -19,6 +19,25 @@ fn esquema_real_restricciones_fk_importes_y_catalogo() {
 }
 use rusqlite::OptionalExtension;
 
+#[cfg(windows)]
+#[test]
+fn cliente_sin_huella_persiste_en_sqlcipher_con_dpapi() {
+    let temp = TempDb::new();
+    let db = abrir_cifrada(&temp.path).unwrap();
+    inicializar_esquema(&db).unwrap();
+    let mut datos = cliente(plan(&db, "Mensual"));
+    datos.sin_huella = true;
+    datos.template_huella.clear();
+    let id = crate::repositories::guardar_cliente_sin_duplicar(&db, datos, |_,_| panic!("SDK")).unwrap();
+    drop(db);
+    let db = abrir_cifrada(&temp.path).unwrap();
+    inicializar_esquema(&db).unwrap();
+    let template: Option<String> = db.query_row("SELECT template_huella FROM clientes WHERE id=?1", [id], |r| r.get(0)).unwrap();
+    assert_eq!(template, None);
+    assert_eq!(counts(&db), (1,1,1,0));
+    assert!(!std::fs::read(&temp.path).unwrap().starts_with(b"SQLite format 3"));
+}
+
 #[test]
 fn esquema_idempotente_conserva_precios_configurados_datos_y_hash() {
     let db=db();let id=vigente(&db);crate::repositories::registrar_asistencia(&db,id).unwrap();

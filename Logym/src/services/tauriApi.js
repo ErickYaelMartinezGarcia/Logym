@@ -46,3 +46,5 @@ export const listarPlanesAdmin = (password) => ejecutar('listar_planes_admin', {
 
 export const obtenerAsistenciasPorHora = () => ejecutar('obtener_asistencias_por_hora')
 export const obtenerAsistenciasDiarias = (periodo) => ejecutar('obtener_asistencias_diarias', { periodo })
+
+export const buscarClientesCheckin = (consulta) => ejecutar('buscar_clientes_checkin', { consulta })

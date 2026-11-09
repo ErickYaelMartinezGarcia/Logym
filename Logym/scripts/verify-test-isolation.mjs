@@ -31,7 +31,16 @@ for (const file of walk(path.join(root, 'src')).filter(file => /\.(js|vue)$/.tes
 const config = JSON.parse(read(path.join(root, 'src-tauri', 'tauri.conf.json')))
 assert.deepEqual(config.tauri.bundle.resources, ['bin/sgfplib.dll', 'bin/sgfpamx.dll', 'bin/sgwsqlib.dll', 'bin/sgfdusdax64.dll', 'bin/sgbledev.dll'], 'Revisar la whitelist de recursos Tauri')
 assert.equal(path.resolve(root, 'src-tauri', config.build.distDir), path.join(root, 'dist'))
-assert(!existsSync(path.join(root, 'public')), 'Si se agrega public/, auditar su contenido antes de publicar')
+const publicDir = path.join(root, 'public')
+if (existsSync(publicDir)) {
+  const entries = readdirSync(publicDir, { withFileTypes: true })
+  assert.deepEqual(entries.map(entry => entry.name), ['arranque.js'], 'Solo se permite public/arranque.js; auditar cualquier recurso adicional')
+  assert(entries[0].isFile(), 'public/arranque.js debe ser un archivo regular')
+  const startup = read(path.join(publicDir, 'arranque.js'))
+  for (const match of startup.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)['"]([^'"]+)['"]/g)) {
+    assert(!/(?:^|\/)(?:tests|\.artifacts|scripts)(?:\/|$)/.test(match[1]), `Import de tests en public/arranque.js: ${match[1]}`)
+  }
+}
 for (const file of walk(path.join(root, 'src-tauri', 'bin'))) {
   assert(!/(?:^|[\\/])(?:tests|docs|scripts|\.artifacts|coverage)(?:[\\/]|$)/.test(file), `Recurso de pruebas: ${file}`)
   assert(!/\.(?:rs|mjs|test\.js)$/.test(file), `Código de pruebas en recursos: ${file}`)
