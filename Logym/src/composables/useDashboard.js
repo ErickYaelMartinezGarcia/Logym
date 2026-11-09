@@ -1,5 +1,6 @@
 import { listen } from '@tauri-apps/api/event'
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { filtrarCriticas } from '../services/periodosDashboard'
 import {
   inicializarBaseDeDatos,
   listarClientes,
@@ -40,10 +41,10 @@ export function useDashboard() {
       .slice(0, 20)
   })
 
-  const alertasMembresia = computed(() => clientesMembresia.value
-    .filter(({ estado_membresia, activo }) => activo && ['vencida', 'por_vencer'].includes(estado_membresia)))
+  const antiguedadVencidas = ref('3')
+  const alertasMembresia = computed(() => filtrarCriticas(clientesMembresia.value, antiguedadVencidas.value))
 
-  const membresiasVencidas = computed(() => clientesMembresia.value
+  const membresiasVencidas = computed(() => alertasMembresia.value
     .filter(({ estado_membresia, activo }) => activo && estado_membresia === 'vencida').length)
   const membresiasPorVencer = computed(() => clientesMembresia.value
     .filter(({ estado_membresia, activo }) => activo && estado_membresia === 'por_vencer').length)
@@ -91,7 +92,7 @@ export function useDashboard() {
     try {
       dejarDeEscuchar = await listen('logym://datos-actualizados', actualizar)
     } catch (error) { console.error('Error al suscribirse a métricas:', error) }
-    actualizar()
+    await actualizar()
   })
   onBeforeUnmount(() => {
     montado = false
@@ -100,6 +101,6 @@ export function useDashboard() {
 
   return {
     clientes, busqueda, clientesFiltrados, resumenAsistencias, metricas,
-    alertasMembresia, membresiasVencidas, membresiasPorVencer
+    alertasMembresia, membresiasVencidas, membresiasPorVencer, antiguedadVencidas
   }
 }

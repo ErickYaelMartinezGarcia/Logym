@@ -5,6 +5,7 @@ import { listen } from '@tauri-apps/api/event'
 
 import ActivacionLicencia from './components/ActivacionLicencia.vue'
 import ToastNotifications from './components/ToastNotifications.vue'
+import RenovacionMembresia from './components/RenovacionMembresia.vue'
 import { mostrarToast } from './services/toast'
 import { detalleLectorPublico, mensajeErrorAsistencia } from './services/mensajesLector'
 const licenciaValida = ref(false)
@@ -128,6 +129,7 @@ onBeforeUnmount(() => {
       <span>{{ textoLector }}<span v-if="lector.detalle" class="mt-1 block max-w-sm text-[11px] text-amber-200/70">{{ lector.detalle }}</span></span>
     </div>
     <ToastNotifications v-if="licenciaValida" />
+    <RenovacionMembresia v-if="licenciaValida" />
   </div>
 </template>
 

@@ -115,7 +115,7 @@ fn asegurar_columna(conexion: &Connection, col: &str, def: &str) -> Result<(), S
     Ok(())
 }
 
-pub const VERSION_ESQUEMA: i64 = 2;
+pub const VERSION_ESQUEMA: i64 = 3;
 
 pub fn inicializar_esquema(conexion: &Connection) -> Result<(), String> {
     let version: i64 = conexion.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(|e|e.to_string())?;
@@ -202,6 +202,20 @@ fn migrar_esquema(conexion: &Connection) -> Result<(), String> {
         conexion.execute("ALTER TABLE tipos_membresia ADD COLUMN duracion_dias INTEGER CHECK(duracion_dias BETWEEN 1 AND 3660)", [])
             .map_err(|e|e.to_string())?;
     }
+    // Solo los nuevos cobros reciben la duración contratada. No inferirla del
+    // catálogo actual para pagos históricos cuyo plan pudo haber cambiado.
+    for (columna, definicion) in [("duracion_dias", "INTEGER"), ("duracion_meses", "INTEGER")] {
+        let existe = conexion.prepare("PRAGMA table_info(pagos)").map_err(|e|e.to_string())?
+            .query_map([], |r| r.get::<_,String>(1)).map_err(|e|e.to_string())?
+            .collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?.iter().any(|n| n == columna);
+        if !existe { conexion.execute(&format!("ALTER TABLE pagos ADD COLUMN {columna} {definicion}"), []).map_err(|e|e.to_string())?; }
+    }
+    conexion.execute_batch("CREATE TABLE IF NOT EXISTS renovaciones_operaciones (
+        id TEXT PRIMARY KEY NOT NULL,
+        cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+        plan_id INTEGER NOT NULL REFERENCES tipos_membresia(id),
+        fecha_fin TEXT NOT NULL
+    );").map_err(|e|e.to_string())?;
     // Entradas ocasionales independientes: no inventar clientes ni alterar sus FK.
     conexion.execute_batch(r#"
         CREATE TABLE IF NOT EXISTS visitas_ocasionales (

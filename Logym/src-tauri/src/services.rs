@@ -54,11 +54,6 @@ fn validar_alta(datos: &mut DatosCliente) -> Result<(), String> {
     if !datos.foto_base64.is_empty() && !["data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,"].iter().any(|p| datos.foto_base64.starts_with(p)) {
         return Err("Formato de fotografía inválido".into());
     }
-    if !datos.fecha_registro.is_empty()
-        && chrono::NaiveDate::parse_from_str(&datos.fecha_registro, "%Y-%m-%d").is_err()
-        && chrono::NaiveDateTime::parse_from_str(&datos.fecha_registro, "%Y-%m-%d %H:%M:%S").is_err() {
-        return Err("Fecha de registro inválida".into());
-    }
     for fecha in [&datos.fecha_inicio_membresia, &datos.fecha_fin_membresia] {
         if !fecha.is_empty() && (fecha.len() != 10 || chrono::NaiveDate::parse_from_str(fecha, "%Y-%m-%d").is_err()) {
             return Err("Fecha de membresía inválida".into());
@@ -68,7 +63,7 @@ fn validar_alta(datos: &mut DatosCliente) -> Result<(), String> {
         && datos.fecha_fin_membresia < datos.fecha_inicio_membresia {
         return Err("El fin de membresía no puede ser anterior al inicio".into());
     }
-    if datos.fecha_registro.is_empty() { datos.fecha_registro = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(); }
+    datos.fecha_registro = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     if datos.fecha_inicio_membresia.is_empty() { datos.fecha_inicio_membresia = chrono::Local::now().format("%Y-%m-%d").to_string(); }
     if datos.fecha_fin_membresia.is_empty() { datos.fecha_fin_membresia = (chrono::Local::now() + chrono::Duration::days(30)).format("%Y-%m-%d").to_string(); }
     Ok(())
@@ -155,7 +150,7 @@ pub fn registrar_asistencia_manual(conn: &rusqlite::Connection, cliente_id: i64)
 }
 pub fn renovar_membresia(app: &AppHandle, datos: DatosRenovacion) -> Result<ClienteCheckIn, String> {
     let conn = database::abrir_db(app)?;
-    repositories::renovar_membresia(&conn, datos.cliente_id, datos.tipo_membresia_id.ok_or("Selecciona el tipo de membresía para renovar")?)?;
+    repositories::renovar_membresia_operacion(&conn, datos.cliente_id, datos.tipo_membresia_id.ok_or("Selecciona el tipo de membresía para renovar")?, &datos.operacion_id)?;
     obtener_cliente_checkin(&conn, datos.cliente_id)
 }
 

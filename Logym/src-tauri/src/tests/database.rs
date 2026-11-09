@@ -2,6 +2,18 @@ use super::*;
 use crate::test_support::*;
 
 #[test]
+fn migracion_v2_v3_preserva_pagos_sin_inventar_duracion_y_reabre() {
+    let temp=TempDb::new();let db=temp.connect();inicializar_esquema(&db).unwrap();let id=vigente(&db);
+    db.execute_batch("DROP TABLE renovaciones_operaciones; ALTER TABLE pagos DROP COLUMN duracion_dias; ALTER TABLE pagos DROP COLUMN duracion_meses; PRAGMA user_version=2;").unwrap();
+    let antes=counts(&db);drop(db);
+    let db=temp.connect();inicializar_esquema(&db).unwrap();inicializar_esquema(&db).unwrap();assert_eq!(counts(&db),antes);
+    assert_eq!(db.query_row("SELECT total_centavos,duracion_dias,duracion_meses FROM pagos",[],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,Option<i64>>(1)?,r.get::<_,Option<i64>>(2)?))).unwrap(),(50000,None,None));
+    let plan_id=plan(&db,"Mensual");crate::repositories::renovar_membresia_operacion(&db,id,plan_id,&"f".repeat(32)).unwrap();drop(db);
+    let db=temp.connect();crate::repositories::renovar_membresia_operacion(&db,id,plan_id,&"f".repeat(32)).unwrap();assert_eq!(counts(&db).1,2);
+    assert_eq!(db.query_row("PRAGMA user_version",[],|r|r.get::<_,i64>(0)).unwrap(),VERSION_ESQUEMA);
+}
+
+#[test]
 fn migracion_version_uno_conserva_catalogo_pagos_y_agrega_dias_y_visitas() {
     let temp=TempDb::new();let db=temp.connect();inicializar_esquema(&db).unwrap();
     vigente(&db);

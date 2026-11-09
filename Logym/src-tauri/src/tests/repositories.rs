@@ -1,4 +1,36 @@
     use super::*;
+    #[test]
+    fn renovacion_idempotente_concurrente_reapertura_y_conflicto_no_duplica() {
+        use crate::test_support::*;
+        let temp=TempDb::new();let db=temp.connect();crate::database::inicializar_esquema(&db).unwrap();
+        let id=vigente(&db);let p=plan(&db,"Mensual");drop(db);
+        std::thread::scope(|scope| {
+            let mut handles=Vec::new();
+            for _ in 0..5 { let path=temp.path.clone();handles.push(scope.spawn(move || {
+                let c=Connection::open(path).unwrap();c.busy_timeout(std::time::Duration::from_secs(10)).unwrap();
+                renovar_membresia_operacion(&c,id,p,&"a".repeat(32)).unwrap();
+            })); }
+            for h in handles {h.join().unwrap();}
+        });
+        let db=temp.connect();let antes=counts(&db);
+        renovar_membresia_operacion(&db,id,p,&"a".repeat(32)).unwrap();assert_eq!(counts(&db),antes);
+        assert_eq!(db.query_row("SELECT count(*) FROM pagos WHERE tipo='renovacion'",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+        assert_eq!(db.query_row("SELECT inscripcion_centavos FROM pagos WHERE tipo='renovacion'",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+        assert!(renovar_membresia_operacion(&db,id,plan(&db,"Estudiante"),&"a".repeat(32)).is_err());
+        assert!(renovar_membresia_operacion(&db,id,p,"incorrecto").is_err());assert_eq!(counts(&db),antes);
+    }
+
+    #[test]
+    fn renovacion_error_revierte_operacion_y_permite_reintento_sin_doble_cobro() {
+        use crate::test_support::*;
+        let db=db();let id=vigente(&db);let p=plan(&db,"Mensual");let antes=counts(&db);
+        db.execute_batch("CREATE TRIGGER fallo BEFORE INSERT ON pagos WHEN NEW.tipo='renovacion' BEGIN SELECT RAISE(ABORT,'fallo sintetico'); END;").unwrap();
+        assert!(renovar_membresia_operacion(&db,id,p,&"b".repeat(32)).is_err());assert_eq!(counts(&db),antes);
+        assert_eq!(db.query_row("SELECT count(*) FROM renovaciones_operaciones",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+        db.execute_batch("DROP TRIGGER fallo;").unwrap();
+        renovar_membresia_operacion(&db,id,p,&"b".repeat(32)).unwrap();renovar_membresia_operacion(&db,id,p,&"b".repeat(32)).unwrap();
+        assert_eq!(db.query_row("SELECT count(*) FROM pagos WHERE tipo='renovacion'",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+    }
     fn sin_huella(plan: i64) -> DatosCliente {
         let mut d = crate::test_support::cliente(plan);
         d.sin_huella = true;

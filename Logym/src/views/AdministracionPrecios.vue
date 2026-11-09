@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { listen } from '@tauri-apps/api/event'
 import AppShell from '../components/AppShell.vue'
-import { duracionPlan } from '../services/duracionPlanes'
+import { duracionPlan, ordenarPlanes } from '../services/duracionPlanes'
 import { adminConfigurado, crearPasswordAdmin, validarPasswordAdmin, listarPlanesAdmin, obtenerPrecioInscripcion, guardarPlanAdmin, guardarInscripcionAdmin, reporteFinanciero } from '../services/tauriApi'
 
 const pestaña = ref('planes')
@@ -17,6 +18,9 @@ const rangoPredeterminado = periodo => {
   return [fechaLocal(inicio), fechaLocal(fin)]
 }
 const periodoFinanzas = ref('mes')
+const categoriaFinanzas = ref('todos')
+const categorias = [{ id:'todos',nombre:'Todos' },{ id:'altas',nombre:'Nuevas membresías' },{ id:'renovaciones',nombre:'Renovaciones' },{ id:'visitas',nombre:'Visitas ocasionales' },{ id:'semanales',nombre:'Semanales' }]
+const categoriaMostrada = computed(() => categorias.find(c => c.id === resumenFinanzas.value?.categoria)?.nombre || 'Todos')
 const [inicioInicial, finInicial] = rangoPredeterminado('mes')
 const fechaInicio = ref(inicioInicial)
 const fechaFin = ref(finInicial)
@@ -93,10 +97,12 @@ function mensajeErrorAdministracion(error, alternativa) {
   return permitidos.includes(texto) ? texto : alternativa
 }
 async function cargar() {
-  planes.value = (await listarPlanesAdmin(password.value)).map(p => ({...p, precio_pesos:p.precio_centavos/100, unidad:p.duracion_dias != null ? 'dias' : 'meses', duracion:p.duracion_dias ?? p.duracion_meses}))
+  planes.value = ordenarPlanes(await listarPlanesAdmin(password.value)).map(p => ({...p, precio_pesos:p.precio_centavos/100, unidad:p.duracion_dias != null ? 'dias' : 'meses', duracion:p.duracion_dias ?? p.duracion_meses}))
   inscripcion.value = (await obtenerPrecioInscripcion())/100
 }
+let revisionFinanzas = 0
 async function cargarFinanzas() {
+  const revision = ++revisionFinanzas
   if (!autorizado.value) return
   if (!fechaInicio.value || !fechaFin.value || fechaInicio.value > fechaFin.value) {
     errorFinanzas.value = 'Selecciona una fecha inicial anterior o igual a la final.'
@@ -104,13 +110,18 @@ async function cargarFinanzas() {
   }
   errorFinanzas.value = ''
   cargandoFinanzas.value = true
-  try { resumenFinanzas.value = await reporteFinanciero(fechaInicio.value, fechaFin.value, password.value) }
+  resumenFinanzas.value = null
+  try {
+    const reporte = await reporteFinanciero(fechaInicio.value, fechaFin.value, password.value, categoriaFinanzas.value)
+    if (revision === revisionFinanzas && autorizado.value) resumenFinanzas.value = reporte
+  }
   catch (e) {
     console.error('Error al consultar el reporte financiero:', e)
+    if (revision !== revisionFinanzas) return
     resumenFinanzas.value = null
     errorFinanzas.value = mensajeErrorAdministracion(e, 'No se pudo consultar el reporte financiero. Intenta nuevamente.')
   }
-  finally { cargandoFinanzas.value = false }
+  finally { if (revision === revisionFinanzas) cargandoFinanzas.value = false }
 }
 function cambiarPestaña(valor) {
   pestaña.value = valor
@@ -171,7 +182,13 @@ async function consultarEstadoAdmin() {
     consultando.value = false
   }
 }
-onMounted(consultarEstadoAdmin)
+let desuscribirDatos
+onMounted(async () => {
+  try { desuscribirDatos = await listen('logym://datos-actualizados', () => { if (autorizado.value && pestaña.value === 'finanzas') cargarFinanzas() }) }
+  catch (e) { console.error('Suscripción de Finanzas:', e) }
+  await consultarEstadoAdmin()
+})
+onBeforeUnmount(() => { revisionFinanzas++; desuscribirDatos?.() })
 </script>
 
 <template>
@@ -220,9 +237,16 @@ onMounted(consultarEstadoAdmin)
       <section v-if="pestaña === 'finanzas'" class="space-y-5">
         <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#ee2046]/20 bg-gradient-to-r from-[#30121c] via-[#19151b] to-[#111317] p-6">
           <div><p class="text-xs font-bold uppercase tracking-[.2em] text-[#ff6b85]">Control financiero</p><h2 class="mt-2 text-2xl font-black text-white">Ingresos del gimnasio</h2><p class="mt-2 text-sm text-zinc-400">Cobros reales, sin información de asistencias.</p></div>
-          <select :value="periodoFinanzas" @change="seleccionarPeriodo($event.target.value)" aria-label="Periodo financiero" class="rounded-xl border border-white/10 bg-[#15171d] px-4 py-3 text-sm font-semibold text-white outline-none focus:border-[#ee2046]">
-            <option value="dia">Hoy</option><option value="semana">Últimos 7 días</option><option value="mes">Mes actual</option><option value="anual">Año actual</option><option value="personalizado">Personalizado</option>
-          </select>
+          <div class="flex w-full flex-wrap items-end gap-3 lg:w-auto">
+            <label class="grid min-w-[160px] flex-1 gap-2 text-xs font-medium text-zinc-400 lg:flex-none">Periodo
+              <select :value="periodoFinanzas" @change="seleccionarPeriodo($event.target.value)" aria-label="Periodo financiero" class="rounded-xl border border-white/10 bg-[#15171d] px-4 py-3 text-sm font-semibold text-white outline-none focus:border-[#ee2046]">
+                <option value="dia">Hoy</option><option value="semana">Últimos 7 días</option><option value="mes">Mes actual</option><option value="anual">Año actual</option><option value="personalizado">Personalizado</option>
+              </select>
+            </label>
+            <label class="grid min-w-[160px] flex-1 gap-2 text-xs font-medium text-zinc-400 lg:flex-none">Categoría de ingresos
+              <select v-model="categoriaFinanzas" aria-label="Categoría de ingresos" class="rounded-xl border border-white/10 bg-[#15171d] px-4 py-3 text-sm font-semibold text-white outline-none focus:border-[#ee2046]" @change="cargarFinanzas"><option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+            </label>
+          </div>
         </div>
         <div v-if="periodoFinanzas === 'personalizado'" class="flex flex-wrap items-end gap-4 rounded-2xl border border-white/10 bg-[#15171d] p-4 sm:p-5">
           <label class="grid gap-2 text-xs font-semibold text-zinc-400">Desde
@@ -236,9 +260,11 @@ onMounted(consultarEstadoAdmin)
         </div>
         <p v-if="resumenFinanzas && periodoFinanzas !== 'personalizado'" class="text-sm text-zinc-300"><span class="font-semibold text-[#ff6b85]">Periodo consultado:</span> {{ periodoMostrado }}</p>
         <p v-if="errorFinanzas" role="alert" class="text-sm text-red-300">{{ errorFinanzas }}</p>
+        <p v-if="resumenFinanzas" class="text-sm text-zinc-300">Total del periodo, todas las categorías: <strong class="text-white">{{ moneda(resumenFinanzas.total_periodo_centavos) }}</strong>. Categoría activa: {{ categoriaMostrada }}.</p>
+        <p v-if="categoriaFinanzas === 'semanales'" class="text-xs text-zinc-400">Altas y renovaciones contratadas por 7 días. Los cobros históricos sin duración guardada no se clasifican como semanales.</p>
         <div v-if="resumenFinanzas" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <article class="rounded-2xl border border-[#ee2046]/30 bg-gradient-to-br from-[#34101c] to-[#16151b] p-6">
-            <p class="text-xs font-semibold uppercase tracking-wider text-zinc-300">Total cobrado</p>
+            <p class="text-xs font-semibold uppercase tracking-wider text-zinc-300">Total de {{ categoriaMostrada }}</p>
             <strong class="mt-4 block text-3xl font-black text-white">{{ moneda(resumenFinanzas.total_centavos) }}</strong>
             <p class="mt-3 text-xs text-zinc-400">{{ resumenFinanzas.numero_pagos }} movimientos registrados</p>
           </article>
@@ -276,6 +302,12 @@ onMounted(consultarEstadoAdmin)
           </div>
           <p class="mt-4 text-xs leading-relaxed text-zinc-500">El año se divide por meses calendario; los periodos cortos, por día. Los periodos sin cobros aparecen en cero.</p>
         </section>
+      </section>
+      <section v-if="pestaña === 'finanzas' && resumenFinanzas" class="overflow-x-auto rounded-2xl border border-white/10 bg-[#15171d] p-5">
+        <h3 class="mb-3 font-semibold">Movimientos · {{ categoriaMostrada }}</h3>
+        <table class="w-full text-center text-sm [&_th]:text-center [&_td]:text-center [&_th]:align-middle [&_td]:align-middle"><thead><tr><th class="p-2">Fecha</th><th class="p-2 table-name">Cliente / visita</th><th class="p-2">Plan</th><th class="p-2">Movimiento</th><th class="p-2">Inscripción incluida</th><th class="p-2">Total</th></tr></thead>
+          <tbody><tr v-for="m in resumenFinanzas.movimientos" :key="m.id" class="border-t border-white/10"><td class="p-2 whitespace-nowrap">{{ m.fecha }}</td><td class="p-2 table-name">{{ m.cliente }}<small v-if="m.cliente_id" class="block text-zinc-400">ID #{{ m.cliente_id }}</small></td><td class="p-2"><span class="plan-badge" :title="m.plan">{{ m.plan }}</span></td><td class="p-2">{{ {alta:'Nueva membresía',renovacion:'Renovación',visita:'Visita ocasional'}[m.tipo] || 'Sin clasificación' }}</td><td class="p-2">{{ moneda(m.inscripcion_centavos) }}</td><td class="p-2 whitespace-nowrap">{{ moneda(m.total_centavos) }}</td></tr><tr v-if="!resumenFinanzas.movimientos?.length"><td colspan="6" class="p-4 text-zinc-400">Sin movimientos en esta categoría y periodo.</td></tr></tbody>
+        </table>
       </section>
       <div v-if="pestaña === 'planes'" class="grid gap-5 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.5fr)]">
         <div class="grid content-start gap-5">

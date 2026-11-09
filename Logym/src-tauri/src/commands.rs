@@ -137,11 +137,11 @@ pub fn resumen_ingresos(app: AppHandle, periodo: String, password: String) -> Re
 
 /// Reporte financiero privado: requiere licencia y autenticación administrativa.
 #[tauri::command]
-pub fn reporte_financiero(app: AppHandle, fecha_inicio: String, fecha_fin: String, password: String) -> Result<crate::membresias::ReporteFinanciero, String> {
+pub fn reporte_financiero(app: AppHandle, fecha_inicio: String, fecha_fin: String, password: String, categoria: Option<String>) -> Result<crate::membresias::ReporteFinanciero, String> {
     licencia::verificar(&app)?;
     let conn = crate::database::abrir_db(&app)?;
     crate::membresias::autenticar(&conn, &password)?;
-    crate::membresias::ingresos_rango(&conn, &fecha_inicio, &fecha_fin)
+    crate::membresias::ingresos_rango_categoria(&conn, &fecha_inicio, &fecha_fin, categoria.as_deref().unwrap_or("todos"))
 }
 
 #[tauri::command]

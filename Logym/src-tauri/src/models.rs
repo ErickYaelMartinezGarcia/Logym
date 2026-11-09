@@ -26,6 +26,8 @@ pub struct DatosCliente {
 
 #[derive(Debug, Deserialize)]
 pub struct DatosRenovacion {
+    #[serde(rename = "operacionId")]
+    pub operacion_id: String,
     #[serde(default, rename = "tipoMembresiaId")]
     pub tipo_membresia_id: Option<i64>,
     #[serde(rename = "clienteId", alias = "cliente_id")]

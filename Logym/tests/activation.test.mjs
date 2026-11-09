@@ -41,6 +41,7 @@ async function appFixture(options = {}) {
       }
       let values=mocks[spec]
       if(spec.endsWith('ToastNotifications.vue'))values={default:{render:()=>null}}
+      if(spec.endsWith('RenovacionMembresia.vue'))values={default:{render:()=>null}}
       if(spec.endsWith('/toast'))values={mostrarToast:aviso=>avisos.push(aviso)}
       if(spec.endsWith('.svg'))values={default:'synthetic.svg'}
       if(values)return new SyntheticModule(Object.keys(values),function(){for(const[k,v]of Object.entries(values))this.setExport(k,v)},{context})

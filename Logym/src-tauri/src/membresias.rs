@@ -43,6 +43,9 @@ pub struct IngresoDiario {
 /// Resumen y evolución para un rango inclusivo de fechas locales.
 #[derive(Serialize)]
 pub struct ReporteFinanciero {
+    pub categoria: String,
+    pub total_periodo_centavos: i64,
+    pub movimientos: Vec<MovimientoIngreso>,
     pub fecha_inicio: String,
     pub fecha_fin: String,
     pub total_centavos: i64,
@@ -53,7 +56,28 @@ pub struct ReporteFinanciero {
     pub serie: Vec<IngresoDiario>,
 }
 
+#[derive(Serialize)]
+pub struct MovimientoIngreso {
+    pub id: String,
+    pub fecha: String,
+    pub cliente: String,
+    pub cliente_id: Option<i64>,
+    pub plan: String,
+    pub tipo: String,
+    pub duracion_dias: Option<i64>,
+    pub total_centavos: i64,
+    pub membresia_centavos: i64,
+    pub inscripcion_centavos: i64,
+    pub visitas_centavos: i64,
+}
+
+#[cfg(test)]
 pub fn ingresos_rango(conn: &Connection, inicio: &str, fin: &str) -> Result<ReporteFinanciero, String> {
+    ingresos_rango_categoria(conn, inicio, fin, "todos")
+}
+
+pub fn ingresos_rango_categoria(conn: &Connection, inicio: &str, fin: &str, categoria: &str) -> Result<ReporteFinanciero, String> {
+    if !["todos", "altas", "renovaciones", "visitas", "semanales"].contains(&categoria) { return Err("Categoría de ingresos inválida".into()); }
     // No interpolar fechas en SQL: validar calendario y enlazar parámetros.
     fn fecha_valida(s: &str) -> bool {
         if s.len() != 10 || !s.is_ascii() || !s.as_bytes().iter().enumerate().all(|(i,b)| if i == 4 || i == 7 { *b == b'-' } else { b.is_ascii_digit() }) { return false; }
@@ -64,16 +88,25 @@ pub fn ingresos_rango(conn: &Connection, inicio: &str, fin: &str) -> Result<Repo
     if !fecha_valida(inicio) || !fecha_valida(fin) || inicio > fin {
         return Err("Selecciona un rango de fechas válido (inicio no posterior al fin)".into());
     }
-    let (total, membresias, inscripciones, pagos, visitas): (i64,i64,i64,i64,i64) = conn.query_row(
-        "SELECT COALESCE(SUM(total_centavos),0), COALESCE(SUM(membresia_centavos),0), COALESCE(SUM(inscripcion_centavos),0), COUNT(*), COALESCE(SUM(visitas_centavos),0) FROM ingresos_todos WHERE date(fecha_pago) BETWEEN ?1 AND ?2",
-        params![inicio, fin], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))
-    ).map_err(|e|e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT date(fecha_pago), SUM(total_centavos) FROM ingresos_todos WHERE date(fecha_pago) BETWEEN ?1 AND ?2 GROUP BY date(fecha_pago) ORDER BY date(fecha_pago)"
-    ).map_err(|e|e.to_string())?;
-    let serie = stmt.query_map(params![inicio,fin], |r| Ok(IngresoDiario { fecha:r.get(0)?, total_centavos:r.get(1)? }))
+    let mut stmt = conn.prepare("SELECT 'pago-'||p.id,p.fecha_pago,c.nombre,p.cliente_id,p.concepto_membresia,p.tipo,p.duracion_dias,p.total_centavos,p.membresia_centavos,p.inscripcion_centavos,0
+        FROM pagos p JOIN clientes c ON c.id=p.cliente_id WHERE date(p.fecha_pago) BETWEEN ?1 AND ?2
+        UNION ALL
+        SELECT 'visita-'||v.id,p.fecha_pago,COALESCE(v.nombre,'Visita sin nombre'),NULL,'Visita ocasional','visita',NULL,p.total_centavos,0,0,p.total_centavos
+        FROM pagos_visitas p JOIN visitas_ocasionales v ON v.id=p.visita_id WHERE date(p.fecha_pago) BETWEEN ?1 AND ?2
+        ORDER BY 2 DESC,1").map_err(|e|e.to_string())?;
+    let todos = stmt.query_map(params![inicio,fin], |r| Ok(MovimientoIngreso {id:r.get(0)?,fecha:r.get(1)?,cliente:r.get(2)?,cliente_id:r.get(3)?,plan:r.get(4)?,tipo:r.get(5)?,duracion_dias:r.get(6)?,total_centavos:r.get(7)?,membresia_centavos:r.get(8)?,inscripcion_centavos:r.get(9)?,visitas_centavos:r.get(10)?}))
         .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
-    Ok(ReporteFinanciero { fecha_inicio:inicio.into(), fecha_fin:fin.into(), total_centavos:total, membresias_centavos:membresias, inscripciones_centavos:inscripciones, visitas_centavos:visitas, numero_pagos:pagos, serie })
+    let total_periodo_centavos = todos.iter().map(|m|m.total_centavos).sum();
+    let movimientos: Vec<_> = todos.into_iter().filter(|m| match categoria { "altas" => m.tipo=="alta", "renovaciones" => m.tipo=="renovacion", "visitas" => m.tipo=="visita", "semanales" => m.duracion_dias==Some(7), _ => true }).collect();
+    let mut diarios = std::collections::BTreeMap::new();
+    for m in &movimientos { *diarios.entry(m.fecha.chars().take(10).collect::<String>()).or_insert(0) += m.total_centavos; }
+    let serie = diarios.into_iter().map(|(fecha,total_centavos)|IngresoDiario{fecha,total_centavos}).collect();
+    Ok(ReporteFinanciero { categoria:categoria.into(), total_periodo_centavos,
+        fecha_inicio:inicio.into(), fecha_fin:fin.into(),
+        total_centavos:movimientos.iter().map(|m|m.total_centavos).sum(),
+        membresias_centavos:movimientos.iter().map(|m|m.membresia_centavos).sum(),
+        inscripciones_centavos:movimientos.iter().map(|m|m.inscripcion_centavos).sum(),
+        visitas_centavos:movimientos.iter().map(|m|m.visitas_centavos).sum(), numero_pagos:movimientos.len() as i64, serie, movimientos })
 }
 
 pub fn listar(conn: &Connection) -> Result<Vec<TipoMembresia>, String> {
@@ -220,5 +253,14 @@ pub fn asistencias_diarias(conn: &Connection, periodo: &str) -> Result<Vec<Asist
     let filas = sentencia.query_map([], |fila| Ok(AsistenciaDiaria { fecha: fila.get(0)?, total: fila.get(1)? })).map_err(|e| e.to_string())?;
     let mut datos = Vec::new();
     for fila in filas { datos.push(fila.map_err(|e| e.to_string())?); }
+    if periodo == "semana" {
+        let hoy = chrono::Local::now().date_naive();
+        let conteos: std::collections::BTreeMap<_,_> = datos.into_iter().map(|d|(d.fecha,d.total)).collect();
+        datos = (0..7).map(|i| {
+            let fecha = (hoy - chrono::Duration::days(6-i)).format("%Y-%m-%d").to_string();
+            let total = *conteos.get(&fecha).unwrap_or(&0);
+            AsistenciaDiaria { fecha,total }
+        }).collect();
+    }
     Ok(datos)
 }

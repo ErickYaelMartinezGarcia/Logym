@@ -6,10 +6,13 @@ import { listen } from '@tauri-apps/api/event'
 import { obtenerAsistenciasDiarias, obtenerAsistenciasPorHora } from '../services/tauriApi'
 import { onBeforeUnmount } from 'vue'
 import { useDashboard } from '../composables/useDashboard'
+import { useRenovacion } from '../composables/useRenovacion'
+import { ventanaSieteDias } from '../services/periodosDashboard'
+const { abrir: abrirRenovacion } = useRenovacion()
 
 const {
   clientes, busqueda, clientesFiltrados, resumenAsistencias, metricas,
-  alertasMembresia, membresiasVencidas, membresiasPorVencer
+  alertasMembresia, membresiasVencidas, membresiasPorVencer, antiguedadVencidas
 } = useDashboard()
 
 const asistenciasHoy = computed(() => metricas.value.find(item => item.titulo === 'Entradas de hoy')?.valor ?? '0')
@@ -51,9 +54,9 @@ const puntosGrafica = computed(() => diasGrafica.value.map((d, i, arr) => ({
 })))
 const lineaGrafica = computed(() => puntosGrafica.value.map(p => p.x + ',' + p.y).join(' '))
 const areaGrafica = computed(() => puntosGrafica.value.length ? `35,210 ${lineaGrafica.value} 665,210` : '')
-const topDias = computed(() => [...diasGrafica.value].sort((a, b) => b.total - a.total).slice(0, 5))
+const topDias = computed(() => periodoGrafica.value === 'semana' ? ventanaSieteDias(asistenciasDiarias.value) : [...diasGrafica.value].sort((a, b) => b.total - a.total).slice(0, 5))
 const totalPeriodo = computed(() => diasGrafica.value.reduce((n,d)=>n+d.total,0))
-const horaPico = computed(() => topDias.value[0]?.total ? topDias.value[0] : null)
+const horaPico = computed(() => { const pico = [...diasGrafica.value].sort((a,b)=>b.total-a.total)[0]; return pico?.total ? pico : null })
 async function cargarGrafica() {
   try {
     if (periodoGrafica.value === 'dia') asistenciasHorarias.value = await obtenerAsistenciasPorHora()
@@ -140,36 +143,36 @@ function etiquetaEstado(estado) {
           aria-label="Buscar cliente por nombre, teléfono o ID" />
       </div>
       <div class="table-scroll">
-        <table class="data-table">
+        <table class="data-table member-table">
           <thead>
             <tr class="muted">
-              <th>MIEMBRO</th>
+              <th class="table-name">MIEMBRO</th>
               <th>PLAN</th>
-              <th>REGISTRO</th>
               <th>INICIO</th>
               <th>FIN</th>
               <th>ESTADO</th>
               <th>DÍAS</th>
+              <th>ACCIÓN</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="cliente in clientesFiltrados" :key="`busqueda-${cliente.id}`">
-              <td><strong>{{ cliente.nombre }}</strong>
+              <td class="table-name"><strong>{{ cliente.nombre }}</strong>
                 <div class="muted secondary">ID #{{ cliente.id }} · {{ cliente.telefono || 'Sin teléfono' }}</div>
               </td>
-              <td><span class="inline-flex rounded-md bg-[#ee2046]/10 px-2.5 py-1 text-xs font-semibold text-[#ff6b85]">{{ cliente.tipo_membresia }}</span></td>
-              <td class="muted">{{ formatearFecha(cliente.fecha_registro) }}</td>
+              <td><span class="plan-badge" :title="cliente.tipo_membresia">{{ cliente.tipo_membresia }}</span></td>
               <td class="muted">{{ formatearFecha(cliente.fecha_inicio_membresia) }}</td>
               <td class="muted">{{ formatearFecha(cliente.fecha_fin_membresia) }}</td>
               <td><span class="status-chip" :class="`status-${cliente.estado_membresia}`">{{
                 etiquetaEstado(cliente.estado_membresia) }}</span></td>
               <td class="muted">{{ cliente.estado_membresia === 'sin_fecha' ? '-' : cliente.dias_restantes }}</td>
+              <td><button v-if="cliente.activo && ['vencida','por_vencer'].includes(cliente.estado_membresia)" class="renew-button" @click="abrirRenovacion(cliente)">Renovar</button></td>
             </tr>
             <tr v-if="!busqueda.trim()">
-              <td colspan="6" class="muted empty-state">Escribe un nombre, teléfono o ID para consultar un cliente.</td>
+              <td colspan="7" class="muted empty-state">Escribe un nombre, teléfono o ID para consultar un cliente.</td>
             </tr>
             <tr v-else-if="!clientesFiltrados.length">
-              <td colspan="6" class="muted empty-state">No se encontraron clientes con ese criterio.</td>
+              <td colspan="7" class="muted empty-state">No se encontraron clientes con ese criterio.</td>
             </tr>
           </tbody>
         </table>
@@ -231,6 +234,7 @@ function etiquetaEstado(estado) {
           <h2 class="section-title">Vencidas y próximas a caducar</h2>
         </div>
         <div class="alert-counters">
+          <label class="muted">Vencidas de <select v-model="antiguedadVencidas" class="expired-filter" aria-label="Antigüedad de membresías vencidas"><option value="1">1 mes</option><option value="2">2 meses</option><option value="3">3 meses</option><option value="todas">Todas</option></select></label>
           <span class="counter-pill danger">Vencidas: {{ membresiasVencidas }}</span>
           <span class="counter-pill warning">Próximas 7 días: {{ membresiasPorVencer }}</span>
         </div>
@@ -239,24 +243,26 @@ function etiquetaEstado(estado) {
         <table class="data-table">
           <thead>
             <tr class="muted">
-              <th>MIEMBRO</th>
+              <th class="table-name">MIEMBRO</th>
               <th>TELÉFONO</th>
               <th>INICIO</th>
               <th>FIN</th>
               <th>ESTADO</th>
+              <th>ACCIÓN</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="cliente in alertasMembresia" :key="`alerta-${cliente.id}`">
-              <td><strong>{{ cliente.nombre }}</strong></td>
+              <td class="table-name"><strong>{{ cliente.nombre }}</strong></td>
               <td class="muted">{{ cliente.telefono || 'Sin teléfono' }}</td>
               <td class="muted">{{ formatearFecha(cliente.fecha_inicio_membresia) }}</td>
               <td class="muted">{{ formatearFecha(cliente.fecha_fin_membresia) }}</td>
               <td><span class="status-chip" :class="`status-${cliente.estado_membresia}`">{{
                 etiquetaEstado(cliente.estado_membresia) }}</span></td>
+              <td><button class="renew-button" @click="abrirRenovacion(cliente)">Renovar</button></td>
             </tr>
             <tr v-if="!alertasMembresia.length">
-              <td colspan="5" class="muted empty-state">No hay membresías vencidas o por vencer en los próximos 7 días.
+              <td colspan="6" class="muted empty-state">No hay membresías vencidas en el rango seleccionado ni por vencer en los próximos 7 días.
               </td>
             </tr>
           </tbody>
@@ -277,14 +283,14 @@ function etiquetaEstado(estado) {
           <table class="data-table">
             <thead>
               <tr class="muted">
-                <th>MIEMBRO</th>
+                <th class="table-name">MIEMBRO</th>
                 <th>TELÉFONO</th>
                 <th>ALTA</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="cliente in clientes" :key="cliente.id">
-                <td><strong>{{ cliente.nombre }}</strong>
+                <td class="table-name"><strong>{{ cliente.nombre }}</strong>
                   <div class="muted secondary">ID #{{ cliente.id }}</div>
                 </td>
                 <td class="muted">{{ cliente.telefono || 'Sin teléfono' }}</td>
@@ -303,6 +309,7 @@ function etiquetaEstado(estado) {
 </template>
 
 <style scoped>
+.member-table{table-layout:fixed;width:100%;min-width:850px}.member-table th:first-child{width:23%}.member-table th:nth-child(2){width:148px}.member-table th:nth-child(5){width:116px}.member-table th:nth-child(6){width:50px}.member-table th:last-child{width:126px}.member-table td{white-space:normal;overflow-wrap:anywhere;padding:12px 8px}.expired-filter{padding:7px 9px;border:1px solid #416184;border-radius:8px;background:#172739;color:#b5d8ff}.table-scroll{overflow-x:auto}@media(max-width:800px){.member-table td{padding:10px 6px}}
 .alert-counters {
   display: flex;
   gap: 9px;
@@ -369,7 +376,16 @@ function etiquetaEstado(estado) {
 .status-chip {
   display: inline-flex;
   align-items: center;
-  padding: 5px 9px;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100px;
+  max-width: 100%;
+  min-height: 30px;
+  flex-shrink: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  padding: 5px 12px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;

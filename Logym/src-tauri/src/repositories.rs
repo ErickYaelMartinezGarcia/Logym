@@ -30,9 +30,9 @@ pub fn guardar_cliente_sin_duplicar(conexion: &Connection, datos: DatosCliente,
 
 fn insertar_cliente(conexion: &Connection, datos: DatosCliente) -> Result<i64,String> {
     let plan_id = datos.tipo_membresia_id.ok_or("Selecciona una membresía")?;
-    let (plan_nombre, precio): (String, i64) = conexion.query_row(
-        "SELECT nombre, precio_centavos FROM tipos_membresia WHERE id=?1 AND activo=1",
-        params![plan_id], |r| Ok((r.get(0)?, r.get(1)?))
+    let (plan_nombre, precio, meses, dias): (String, i64, i64, Option<i64>) = conexion.query_row(
+        "SELECT nombre, precio_centavos, duracion_meses, duracion_dias FROM tipos_membresia WHERE id=?1 AND activo=1",
+        params![plan_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
     ).map_err(|_| "La membresía seleccionada no está disponible".to_string())?;
     let inscripcion = if datos.incluir_inscripcion {
         crate::membresias::inscripcion(conexion)?
@@ -50,8 +50,8 @@ fn insertar_cliente(conexion: &Connection, datos: DatosCliente) -> Result<i64,St
         params![id, datos.fecha_inicio_membresia, datos.fecha_fin_membresia, datos.fecha_registro],
     ).map_err(|e| e.to_string())?;
     tx.execute(
-        "INSERT INTO pagos(cliente_id,membresia_id,concepto_membresia,membresia_centavos,inscripcion_centavos,total_centavos,fecha_pago,tipo) VALUES(?1,?2,?3,?4,?5,?6,datetime('now','localtime'),'alta')",
-        params![id,plan_id,plan_nombre,precio,inscripcion,precio+inscripcion],
+        "INSERT INTO pagos(cliente_id,membresia_id,concepto_membresia,membresia_centavos,inscripcion_centavos,total_centavos,fecha_pago,tipo,duracion_meses,duracion_dias) VALUES(?1,?2,?3,?4,?5,?6,datetime('now','localtime'),'alta',?7,?8)",
+        params![id,plan_id,plan_nombre,precio,inscripcion,precio+inscripcion,meses,dias],
     ).map_err(|e| e.to_string())?;
     Ok(id)
 }
@@ -123,10 +123,22 @@ pub fn registrar_asistencia(conexion: &Connection, cliente_id: i64) -> Result<St
     Ok("Asistencia registrada".into())
 }
 
+#[cfg(test)]
 pub fn renovar_membresia(conexion: &Connection, cliente_id: i64, plan_id: i64) -> Result<String, String> {
+    renovar_membresia_operacion(conexion, cliente_id, plan_id, &crate::recuperacion::sufijo()?)
+}
+
+pub fn renovar_membresia_operacion(conexion: &Connection, cliente_id: i64, plan_id: i64, operacion: &str) -> Result<String, String> {
+    use rusqlite::OptionalExtension;
+    if operacion.len() != 32 || !operacion.bytes().all(|b| b.is_ascii_hexdigit()) { return Err("Confirmación de renovación inválida".into()); }
+    let operacion = operacion.to_ascii_lowercase();
     // Serializa las renovaciones concurrentes para leer y extender el período
     // de forma atómica, sin perder días pagados.
     let tx = rusqlite::Transaction::new_unchecked(conexion, rusqlite::TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
+    let existente = tx.query_row("SELECT cliente_id,plan_id FROM renovaciones_operaciones WHERE id=?1", [&operacion], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?))).optional().map_err(|e|e.to_string())?;
+    if let Some((cliente,plan)) = existente {
+        return if cliente == cliente_id && plan == plan_id { Ok("Membresía renovada".into()) } else { Err("La confirmación pertenece a otra renovación".into()) };
+    }
     let (nombre, precio, meses, duracion_dias): (String, i64, i64, Option<i64>) = tx.query_row(
         "SELECT nombre,precio_centavos,duracion_meses,duracion_dias FROM tipos_membresia WHERE id=?1 AND activo=1 AND solo_alta=0",
         params![plan_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))
@@ -144,8 +156,9 @@ pub fn renovar_membresia(conexion: &Connection, cliente_id: i64, plan_id: i64) -
     if changed == 0 { return Err("Cliente no encontrado o desactivado".into()); }
     tx.execute("INSERT INTO membresias_historial(cliente_id,fecha_inicio,fecha_fin,fecha_pago,tipo) VALUES(?1,?2,?3,datetime('now','localtime'),'renovacion')",
         params![cliente_id,inicio_periodo.to_string(),finaliza]).map_err(|e| e.to_string())?;
-    tx.execute("INSERT INTO pagos(cliente_id,membresia_id,concepto_membresia,membresia_centavos,inscripcion_centavos,total_centavos,tipo) VALUES(?1,?2,?3,?4,0,?4,'renovacion')",
-        params![cliente_id,plan_id,nombre,precio]).map_err(|e| e.to_string())?;
+    tx.execute("INSERT INTO pagos(cliente_id,membresia_id,concepto_membresia,membresia_centavos,inscripcion_centavos,total_centavos,tipo,duracion_meses,duracion_dias) VALUES(?1,?2,?3,?4,0,?4,'renovacion',?5,?6)",
+        params![cliente_id,plan_id,nombre,precio,meses,duracion_dias]).map_err(|e| e.to_string())?;
+    tx.execute("INSERT INTO renovaciones_operaciones(id,cliente_id,plan_id,fecha_fin) VALUES(?1,?2,?3,?4)",params![operacion,cliente_id,plan_id,finaliza]).map_err(|e|e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok("Membresía renovada".into())
 }

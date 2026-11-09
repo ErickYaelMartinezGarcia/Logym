@@ -1,22 +1,20 @@
 <script setup>
 import AppShell from '../components/AppShell.vue'
 import VisitaOcasional from '../components/VisitaOcasional.vue'
-import { duracionPlan } from '../services/duracionPlanes'
 import { useCheckIn } from '../composables/useCheckIn'
 
 const {
   consultaManual, resultadosManual, buscandoManual, registrandoManual, mensajeManual,
   busquedaAbierta, modalManual, asistenciaManualRegistrada, lecturasPendientes,
   buscarManual, seleccionarManual, confirmarManual, cancelarBusqueda,
-  tiposMembresia, tipoMembresiaId,
-  router, mensaje, estadoCheckin, cargando, procesandoRenovacion, clienteDetectado, modalAbierta,
-  confirmandoRenovacion, lectorActivo, estadoLector, formatearFecha, etiquetaEstado, diasRestantes,
-  capturarAcceso, cerrarModal, solicitarRenovacion, renovar
+  router, mensaje, estadoCheckin, cargando, clienteDetectado, modalAbierta,
+  lectorActivo, estadoLector, formatearFecha, etiquetaEstado, diasRestantes,
+  capturarAcceso, cerrarModal, solicitarRenovacion
 } = useCheckIn()
 </script>
 
 <template>
-  <AppShell>
+  <AppShell class="checkin-shell">
     <div class="checkin-layout">
       <section class="checkin-copy">
         <p class="eyebrow">CONTROL DE ACCESO / 00</p>
@@ -53,7 +51,9 @@ const {
         <div v-else class="checkin-content">
         <div class="fingerprint-orb" :class="{ 'fingerprint-orb--active': cargando || lectorActivo }">
           <div class="fingerprint-ring ring-one"></div>
-          <div class="fingerprint-ring ring-two"></div><span>⌁</span>
+          <div class="fingerprint-ring ring-two"></div>
+          <div class="fingerprint-ring ring-three" aria-hidden="true"></div>
+          <svg class="fingerprint-symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 14h6l-1 8L19 9h-6l1-7Z" fill="currentColor" /></svg>
         </div>
         <div class="reader-status"><span class="reader-status__dot"
             :class="{ 'reader-status__dot--active': lectorActivo }"></span>
@@ -66,14 +66,14 @@ const {
         </div>
         <div v-if="modalAbierta && clienteDetectado" class="cliente-modal-backdrop" @click.self="cerrarModal">
           <div class="cliente-modal" :class="{
-            'cliente-modal--valid': (!modalManual || asistenciaManualRegistrada) && ['activa', 'por_vencer'].includes(clienteDetectado.estado_membresia),
+            'cliente-modal--valid': estadoCheckin !== 'error' && ['activa', 'por_vencer'].includes(clienteDetectado.estado_membresia),
             'cliente-modal--expired': clienteDetectado.estado_membresia === 'vencida'
           }" role="dialog" aria-modal="true" aria-label="Información del cliente">
             <button class="modal-close" aria-label="Cerrar información del cliente" :disabled="registrandoManual" @click="cerrarModal">×</button>
             <div v-if="(!modalManual || asistenciaManualRegistrada) && ['activa', 'por_vencer'].includes(clienteDetectado.estado_membresia)" class="access-approved"><span>✓</span> ACCESO
               VÁLIDO</div>
             <p v-if="modalManual" class="eyebrow">{{ asistenciaManualRegistrada ? 'ASISTENCIA REGISTRADA' : 'CONFIRMACIÓN DEL OPERADOR' }}</p>
-            <p v-if="!['success', 'warning'].includes(estadoCheckin)" class="checkin-status checkin-message" :class="`checkin-status--${estadoCheckin}`" role="status" aria-live="polite">{{ mensaje }}</p>
+            <p v-if="!['success', 'warning'].includes(estadoCheckin)" class="cliente-modal-message checkin-message" :class="`checkin-status--${estadoCheckin}`" role="status" aria-live="polite">{{ mensaje }}</p>
             <p v-else-if="estadoCheckin === 'success'" class="sr-only" role="status" aria-live="polite">{{ mensaje }}</p>
             <div class="panel-head">
               <div v-if="clienteDetectado.foto_base64" class="cliente-foto-frame">
@@ -103,26 +103,8 @@ const {
                 </div>
                 <p class="Dashboard-dias">{{ diasRestantes(clienteDetectado) }}</p>
 
-                <div v-if="!modalManual && clienteDetectado.estado_membresia === 'vencida'" class="renovacion-box">
-                  <p class="muted renewal-label">Membresía vencida</p>
-                  <p class="renewal-copy">Puedes autorizar una nueva membresía con fecha base de hoy.</p>
-                  <button v-if="!confirmandoRenovacion" class="secondary-button" @click="solicitarRenovacion">Renovar
-                    membresía</button>
-                  <div v-else class="renewal-confirmation">
-                    <label>Plan para renovar (sin inscripción)
-                      <select v-model="tipoMembresiaId" class="renewal-select">
-                        <option v-for="plan in tiposMembresia" :key="plan.id" :value="String(plan.id)">{{ plan.nombre }} · {{ duracionPlan(plan) }} — {{ (plan.precio_centavos / 100).toLocaleString("es-MX", {style:"currency",currency:"MXN"}) }}</option>
-                      </select>
-                    </label>
-                    <strong>¿Autorizar renovación?</strong>
-                    <p>Se aplicará la duración del plan seleccionado, sin cobrar inscripción.</p>
-                    <div class="renewal-actions">
-                      <button class="text-button text-button--secondary" :disabled="procesandoRenovacion"
-                        @click="confirmandoRenovacion = false">Cancelar</button>
-                      <button class="secondary-button" :disabled="procesandoRenovacion" @click="renovar">{{
-                        procesandoRenovacion ? 'Guardando...' : 'Aceptar renovación' }}</button>
-                    </div>
-                  </div>
+                <div v-if="['vencida','por_vencer'].includes(clienteDetectado.estado_membresia)" class="renovacion-box">
+                  <button type="button" class="renew-button" @click="solicitarRenovacion">Renovar membresía</button>
                 </div>
               </div>
             </div>
@@ -143,15 +125,19 @@ const {
 </template>
 
 <style scoped>
-.checkin-layout { padding-bottom:90px; }
+.checkin-shell :deep(.page-content) {
+  height: calc(100dvh - 76px);
+  padding-top: clamp(12px, 2.5vh, 24px);
+  padding-bottom: 84px;
+}
 .manual-search { text-align: left; padding-bottom: 20px; margin-bottom: 22px; border-bottom: 1px solid #343941; }
 .manual-search label { color: #aeb3bc; font-size: 12px; }
 .manual-search__controls { display: flex; gap: 8px; margin-top: 9px; }
 .manual-search input { min-width: 0; width: 100%; padding: 11px 12px; color: #fff; background: #111317; border: 1px solid #343941; border-radius: 10px; }
 .manual-search input:focus { outline: 2px solid #ee2046; outline-offset: 2px; }
 .manual-search__controls .secondary-button { width: auto; }
-.checkin-content { height: 340px; }
-.manual-results-view { display: flex; flex-direction: column; text-align: left; }
+.checkin-content { min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.manual-results-view { align-items: stretch; justify-content: flex-start; text-align: left; }
 .manual-results-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .manual-results-heading h2 { font-size: 15px; }
 .manual-results-heading .text-button { margin: 0; color: #d3d7de; }
@@ -170,13 +156,19 @@ const {
 .manual-return { margin-top: 22px; }
 .checkin-layout {
   display: grid;
-  grid-template-columns: 1fr minmax(320px, 430px);
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 470px);
   align-items: center;
-  gap: clamp(20px, 5vw, 90px);
+  gap: clamp(18px, 4vw, 70px);
 }
 
 .checkin-card {
-  padding: clamp(18px, 3vh, 36px) 32px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: min(100%, 540px);
+  min-height: 0;
+  padding: clamp(16px, 2.5vh, 28px) 32px;
   text-align: center;
 }
 
@@ -184,8 +176,9 @@ const {
   position: relative;
   display: grid;
   place-items: center;
-  width: clamp(115px, 21vh, 170px);
-  height: clamp(115px, 21vh, 170px);
+  width: clamp(150px, 25vh, 200px);
+  aspect-ratio: 1;
+  flex-shrink: 0;
   margin: 0 auto 18px;
   border: 1px solid #5a1b2a;
   border-radius: 50%;
@@ -195,14 +188,17 @@ const {
 }
 
 .fingerprint-orb--active {
-  animation: reader-pulse 2s ease-in-out infinite;
+  animation: reader-breathe 3s ease-in-out infinite;
+  transform-origin: center;
 }
 
-.fingerprint-orb span {
-  font-size: clamp(48px, 9vh, 72px);
-  line-height: 1;
-  transform: rotate(90deg);
-  text-shadow: 0 0 25px #ee2046;
+.fingerprint-symbol {
+  position: absolute;
+  inset: 0;
+  width: clamp(42px, 7.5vh, 58px);
+  height: clamp(42px, 7.5vh, 58px);
+  margin: auto;
+  filter: drop-shadow(0 0 12px rgba(238, 32, 70, .65));
 }
 
 .fingerprint-ring {
@@ -212,11 +208,16 @@ const {
 }
 
 .ring-one {
-  inset: 14px;
+  inset: 12%;
 }
 
 .ring-two {
-  inset: 29px;
+  inset: 24%;
+}
+
+.ring-three {
+  inset: 32%;
+  border-color: rgba(238, 32, 70, .55);
 }
 
 .checkin-status {
@@ -260,12 +261,31 @@ const {
   color: #ff9caf;
 }
 
+.cliente-modal-message {
+  margin: 0 0 18px;
+  padding: 10px 0 14px;
+  border: 0;
+  border-bottom: 1px solid #343941;
+  border-radius: 0;
+  background: transparent;
+  text-align: center;
+}
+
+.cliente-modal-message.checkin-status--error {
+  border-bottom-color: #8c2942;
+  color: #ff9caf;
+}
+
+.cliente-modal-message.checkin-status--processing {
+  border-bottom-color: #3971c4;
+}
+
 .reader-status {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin: -10px 0 14px;
+  margin: 0 0 14px;
   color: #8f96a1;
   font-size: 11px;
 }
@@ -325,7 +345,7 @@ const {
 }
 
 .cliente-modal--valid {
-  border-color: #287c58;
+  border: 2px solid #287c58;
   box-shadow: 0 0 38px rgba(68, 212, 131, .16), 0 24px 80px rgba(0, 0, 0, .55);
 }
 
@@ -420,8 +440,20 @@ const {
 
 .estado-chip {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: fit-content;
+  min-width: min(170px, 100%);
+  max-width: 100%;
+  min-height: 32px;
+  flex-shrink: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  text-align: center;
   margin-top: 15px;
-  padding: 6px 11px;
+  padding: 6px 14px;
   border-radius: 999px;
   border: 1px solid transparent;
   font-size: 11px;
@@ -539,23 +571,40 @@ const {
   cursor: not-allowed;
 }
 
-@keyframes reader-pulse {
-  50% {
-    box-shadow: 0 0 75px rgba(68, 212, 131, .2);
-    border-color: #287c58;
-  }
+@keyframes reader-breathe {
+  0%, 100% { transform: scale(.97); opacity: .75; box-shadow: 0 0 38px rgba(238, 32, 70, .12); }
+  50% { transform: scale(1.03); opacity: 1; box-shadow: 0 0 65px rgba(238, 32, 70, .24); }
+}
+
+@media(prefers-reduced-motion:reduce) {
+  .fingerprint-orb--active { animation: none; }
+}
+
+@media(max-height:650px) {
+  .checkin-card { padding: 14px 24px; }
+  .manual-search { padding-bottom: 10px; margin-bottom: 10px; }
+  .manual-search input { padding: 8px 10px; }
+  .fingerprint-orb { width: clamp(120px, 24vh, 156px); margin-bottom: 12px; }
+  .reader-status { margin-bottom: 10px; }
+  .checkin-content > .checkin-status { min-height: 46px; padding: 7px 10px; margin-bottom: 8px; }
+  .checkin-content > .checkin-status .checkin-message { font-size: 12px; }
+  .checkin-content > .text-button { margin-top: 10px; }
+  .checkin-content > .text-button--secondary { margin-top: 0; }
 }
 
 @media(max-width:800px) {
   .checkin-layout {
     grid-template-columns: 1fr;
-    min-height: auto;
-    gap: 35px
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 12px;
   }
 
   .checkin-copy {
     text-align: center
   }
+
+  .checkin-copy .page-title { font-size: 26px; margin: 5px 0 0; }
+  .checkin-copy__description, .checkin-copy__line { display: none; }
 
   .checkin-copy .neon-line {
     margin-left: auto;
@@ -563,8 +612,11 @@ const {
   }
 
   .checkin-card {
-    padding: 30px 22px
+    padding: 14px 22px;
   }
+
+  .manual-search { padding-bottom: 14px; margin-bottom: 12px; }
+  .fingerprint-orb { width: clamp(120px, 22vh, 170px); margin-bottom: 12px; }
 
   .fechas-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr))
@@ -584,6 +636,12 @@ const {
     width: 240px;
     height: 240px;
   }
+}
+
+@media(max-width:800px) and (max-height:650px) {
+  .fingerprint-orb { width: clamp(100px, 18vh, 120px); }
+  .checkin-copy .page-title { font-size: 22px; }
+  .manual-search { padding-bottom: 8px; margin-bottom: 8px; }
 }
 
 @media(max-width:520px) {

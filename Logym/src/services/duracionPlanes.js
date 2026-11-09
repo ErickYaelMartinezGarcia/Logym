@@ -1,3 +1,9 @@
+// Mensual encabeza todos los catálogos; el resto conserva su orden original.
+export function ordenarPlanes(planes) {
+  const esMensual = plan => plan.nombre?.trim().toLocaleLowerCase('es-MX') === 'mensual'
+  return [...planes].sort((a, b) => Number(esMensual(b)) - Number(esMensual(a)))
+}
+
 export function duracionPlan(plan) {
   const dias = plan.duracion_dias
   if (dias != null) return `${dias} ${dias === 1 ? 'día' : 'días'}`

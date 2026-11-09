@@ -4,7 +4,78 @@ import { readFile } from 'node:fs/promises'
 import { SourceTextModule, SyntheticModule, createContext } from 'node:vm'
 import * as Vue from 'vue'
 import { MENSAJES_LECTOR, mensajeErrorLector, detalleLectorPublico } from '../src/services/mensajesLector.js'
-import { duracionPlan, fechaFinPlan } from '../src/services/duracionPlanes.js'
+import { duracionPlan, fechaFinPlan, ordenarPlanes } from '../src/services/duracionPlanes.js'
+import { ventanaSieteDias, filtrarCriticas } from '../src/services/periodosDashboard.js'
+
+test('Catálogo: Mensual primero sin cambiar el orden de los demás ni mutar los datos', () => {
+  const planes=[{id:7,nombre:'Estudiante'},{id:2,nombre:' MENSUAL '},{id:8,nombre:'Semanal'}]
+  assert.deepEqual(ordenarPlanes(planes).map(p=>p.id),[2,7,8])
+  assert.deepEqual(planes.map(p=>p.id),[7,2,8])
+  assert.deepEqual(ordenarPlanes([planes[0],planes[2]]).map(p=>p.id),[7,8])
+})
+
+test('Registro y renovación abren con Mensual; un reintento conserva el plan confirmado', async () => {
+  const catalogo=[{id:7,nombre:'Estudiante',duracion_meses:1},{id:2,nombre:'Mensual',duracion_meses:1}]
+  const api={listarTiposMembresia:async()=>catalogo}
+  const f=await registro({api});assert.equal(f.state.tipoMembresiaId.value,'2');assert.equal(f.state.tiposMembresia.value[0].id,2);await f.unmount()
+  const g=await fixture('composables/useRenovacion.js',{api});const r=g.ns.useRenovacion();await r.abrir({id:1})
+  assert.equal(r.planId.value,'2');assert.equal(r.planes.value[0].id,2)
+  const pendiente=JSON.stringify({id:'a'.repeat(32),clienteId:1,planId:7})
+  const h=await fixture('composables/useRenovacion.js',{api,storage:{getItem:()=>pendiente}});const s=h.ns.useRenovacion();await s.abrir({id:1})
+  assert.equal(s.planes.value[0].id,2);assert.equal(s.planId.value,'7')
+})
+
+test('Dashboard: siete días cronológicos con ceros, fin de mes, año y fecha local', () => {
+  for (const hoy of [new Date(2026,10,14,23),new Date(2026,10,11,0),new Date(2027,0,2,12),new Date(2024,2,2,12)]) {
+    const dias=ventanaSieteDias([],hoy);assert.equal(dias.length,7)
+    const conDatos=ventanaSieteDias([{fecha:dias[0].fecha,total:2},{fecha:dias[6].fecha,total:1},{fecha:'2000-01-01',total:100}],hoy)
+    assert.deepEqual(conDatos.map(d=>d.total),[2,0,0,0,0,0,1]);assert.equal(new Set(dias.map(d=>d.fecha)).size,7)
+    for(let i=1;i<7;i++)assert.ok(dias[i].fecha>dias[i-1].fecha)
+    assert.equal(new Date(dias[6].fecha+'T12:00:00').getDate(),hoy.getDate())
+  }
+})
+
+test('Dashboard: filtro de vencidas calendario no elimina próximas ni inactivos de sus registros', () => {
+  const clientes=[['2026-10-30','vencida'],['2026-09-30','vencida'],['2026-08-30','vencida'],['2026-07-30','vencida'],['2026-12-01','por_vencer'],['2026-10-30','activa']].map(([fecha_fin_membresia,estado_membresia],id)=>({id,fecha_fin_membresia,estado_membresia,activo:true}))
+  clientes.push({...clientes[0],id:9,activo:false})
+  for(const [meses,ids] of [['1',[0,4]],['2',[0,1,4]],['3',[0,1,2,4]],['todas',[0,1,2,3,4]]])assert.deepEqual(filtrarCriticas(clientes,meses,new Date(2026,10,30)).map(c=>c.id),ids)
+  assert.equal(clientes.length,7)
+})
+
+test('Renovación común: respuesta perdida y reinicio reenvían exactamente una operación persistida', async () => {
+  const data=new Map(),envios=[],storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)}
+  const f=await fixture('composables/useRenovacion.js',{storage,api:{renovarMembresia:async(...args)=>{envios.push(args);throw Error('SQLCipher C:\\secreto\\gym.db')}}})
+  const r=f.ns.useRenovacion();await r.abrir({id:1});await r.confirmar();assert.equal(r.pendiente.value.clienteId,1)
+  assert.ok(!r.error.value.includes('SQLCipher'));assert.equal(f.erroresTecnicos.length,1)
+  r.cerrar();const g=await fixture('composables/useRenovacion.js',{storage,api:{renovarMembresia:async(...args)=>{envios.push(args);return{id:1}}}})
+  const s=g.ns.useRenovacion();await s.abrir({id:999});assert.equal(s.cliente.value.id,1);await s.confirmar()
+  assert.deepEqual(envios[0],envios[1]);assert.equal(data.size,0);assert.equal(s.abierta.value,false)
+})
+
+test('Renovación común: almacenamiento no disponible impide enviar un cobro sin protección', async () => {
+  const f=await fixture('composables/useRenovacion.js',{storage:{getItem:()=>null,setItem:()=>{throw Error('sin almacenamiento')}}})
+  const s=f.ns.useRenovacion();await s.abrir({id:1});await s.confirmar();assert.equal(s.pendiente.value,null);assert.equal(s.guardando.value,false)
+  assert.ok(!f.calls.some(([c])=>c==='toast'));assert.ok(s.error.value)
+})
+
+test('Renovación común: rechazo sin escritura permite cambiar plan; cerrar impide nuevos cobros', async () => {
+  const envios=[]
+  const f=await fixture('composables/useRenovacion.js',{api:{renovarMembresia:async(...args)=>{envios.push(args);if(envios.length===1)throw 'Selecciona una membresía vigente';return{id:1}}}})
+  const s=f.ns.useRenovacion();await s.abrir({id:1});await s.confirmar();assert.equal(s.pendiente.value,null);assert.equal(s.guardando.value,false)
+  await s.confirmar();assert.equal(envios.length,2);assert.notEqual(envios[0][2],envios[1][2]);await s.confirmar();assert.equal(envios.length,2)
+})
+
+test('Dashboard: evento confirmado actualiza clientes, lista crítica y métricas sin polling', async () => {
+  let vigente=false
+  const f=await fixture('composables/useDashboard.js',{api:{listarClientes:async()=>[],listarClientesMembresia:async()=>[{id:1,activo:true,estado_membresia:vigente?'activa':'por_vencer'}],obtenerMetricasDashboard:async()=>({total_clientes:1})}})
+  const s=f.ns.useDashboard();await f.mount();assert.equal(s.alertasMembresia.value.length,1);assert.equal(s.antiguedadVencidas.value,'3')
+  vigente=true;await f.listeners.get('logym://datos-actualizados')();assert.equal(s.alertasMembresia.value.length,0);await f.unmount();assert.equal(f.listeners.size,0)
+})
+
+test('Registro: fecha manipulada en Vue no se envía como fecha de alta', async () => {
+  const f=await registro();const s=f.state;s.sinHuella.value=true;s.nombre.value='Sintético';s.fechaRegistro.value='2099-01-01';await s.guardar()
+  const datos=f.calls.find(([c])=>c==='guardar')[1];assert.equal('fechaRegistro' in datos,false);await f.unmount()
+})
 
 test('Duraciones: siete días inclusivos, bisiestos y meses históricos', () => {
   for (const [inicio, plan, fin] of [
@@ -79,6 +150,7 @@ async function fixture(file, overrides = {}) {
     pausarLectorGlobal: async v => { calls.push(['pausa', v]) },
     inicializarBaseDeDatos: async () => {},
     listarTiposMembresia: async () => [{ id: 1, nombre: 'Mensual', duracion_meses: 1, solo_alta: false }],
+    listarClientesMembresia: async () => [{ id:1,nombre:'Sintético',activo:true }],
     obtenerPrecioInscripcion: async () => 15000,
     buscarClientesCheckin: async () => [],
     registrarAsistencia: async id => { calls.push(['asistencia', id]); return 'Asistencia registrada' },
@@ -86,19 +158,21 @@ async function fixture(file, overrides = {}) {
     capturarHuella: async () => 'ab'.repeat(400),
     compararHuella: async () => true,
     guardarCliente: async d => { calls.push(['guardar', d]) },
-    renovarMembresia: async () => ({}), ...overrides.api,
+    renovarMembresia: async id => ({id}), ...overrides.api,
   }
   const vue = { ...Vue, onMounted: f => mounted.push(f), onBeforeUnmount: f => unmounted.push(f) }
   const mocks = {
     vue,
     '../services/tauriApi': api,
     './useCamera': { useCamera: () => ({ fotoBase64: Vue.ref('') }) },
+    '../services/toast': { mostrarToast: aviso => calls.push(['toast', aviso]) },
     'vue-router': { useRouter: () => ({ push: () => {} }) },
     '@tauri-apps/api/event': { listen: async (name, f) => { listeners.set(name, f); return () => listeners.delete(name) }, ...overrides.events },
     '@tauri-apps/api/tauri': { invoke: async () => ({ estado: 'recuperando', revision: 1, sdk_inicializado: true, captura_comprobada: false }), ...overrides.ipc },
   }
+  const datos = new Map()
   const context = createContext({
-    navigator: overrides.navigator || {}, crypto: globalThis.crypto, localStorage: overrides.storage,
+    navigator: overrides.navigator || {}, crypto: globalThis.crypto, localStorage: overrides.storage || { getItem:k=>datos.get(k)||null, setItem:(k,v)=>datos.set(k,v), removeItem:k=>datos.delete(k) },
     console: { error: (...args) => erroresTecnicos.push(args), warn: () => {}, log: () => {} },
     Date: class extends Date { static now() { return now } },
     setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, at: now + ms }); return id },
@@ -106,8 +180,16 @@ async function fixture(file, overrides = {}) {
   })
   const source = new URL(`../src/${file}`, import.meta.url)
   const module = new SourceTextModule(await readFile(source, 'utf8'), { context, identifier: source.href })
-  await module.link(async specifier => {
-    if (['../services/mensajesLector', '../services/duracionPlanes'].includes(specifier)) {
+  const modules = new Map()
+  const linker = async specifier => {
+    if (specifier === './useRenovacion') {
+      if (!modules.has(specifier)) {
+        const child = new SourceTextModule(await readFile(new URL('../src/composables/useRenovacion.js',import.meta.url),'utf8'),{context})
+        modules.set(specifier,child); await child.link(linker)
+      }
+      return modules.get(specifier)
+    }
+    if (['../services/mensajesLector', '../services/duracionPlanes', '../services/periodosDashboard'].includes(specifier)) {
       const helper = new SourceTextModule(await readFile(new URL(`../src/services/${specifier.split('/').pop()}.js`, import.meta.url), 'utf8'), { context })
       await helper.link(() => { throw Error('El traductor debe ser independiente') })
       return helper
@@ -117,9 +199,10 @@ async function fixture(file, overrides = {}) {
     return new SyntheticModule(Object.keys(values), function () {
       for (const [key, value] of Object.entries(values)) this.setExport(key, value)
     }, { context })
-  })
+  }
+  await module.link(linker)
   await module.evaluate()
-  return { ns: module.namespace, api, calls, listeners, erroresTecnicos,
+  return { ns: module.namespace, api, calls, listeners, erroresTecnicos, modules,
     mount: async () => { for (const fn of mounted) await fn() },
     unmount: async () => { for (const fn of unmounted) await fn() },
     advance: ms => { now += ms; for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.fn() } },
@@ -221,7 +304,7 @@ test('Alta sin huella mantiene validación de nombre, teléfonos, fechas y plan'
   const { state, calls } = await registro()
   state.sinHuella.value = true
   await Vue.nextTick()
-  for (const [campo, valor] of [['nombre',''], ['telefono','123'], ['fechaRegistro',''], ['fechaFinMembresia','2020-01-01'], ['tipoMembresiaId','']]) {
+  for (const [campo, valor] of [['nombre',''], ['telefono','123'], ['fechaInicioMembresia',''], ['fechaFinMembresia','2020-01-01'], ['tipoMembresiaId','']]) {
     completar(state)
     state.telefono.value = ''
     state.tipoMembresiaId.value = '1'
@@ -322,8 +405,9 @@ test('Huella durante confirmación manual queda en cola sin cambiar la identidad
   const s = f.ns.useCheckIn(); await f.mount()
   s.consultaManual.value = 'Manual'; await s.buscarManual()
   s.seleccionarManual(s.resultadosManual.value[0])
-  s.solicitarRenovacion(); await s.renovar()
-  assert.equal(s.confirmandoRenovacion.value, false)
+  await s.solicitarRenovacion()
+  const renovacion=f.modules.get('./useRenovacion').namespace.useRenovacion()
+  assert.equal(renovacion.abierta.value,true);renovacion.cerrar()
   assert.equal(renewals, 0)
   const pending = s.confirmarManual()
   const recibir = f.listeners.get('logym://checkin')
@@ -510,7 +594,7 @@ test('Registro: errores de captura y guardas de formulario liberan flags', async
   assert.equal(state.tipoMensaje.value, 'error')
   completar(state); state.capturandoHuella.value = true
   await state.guardar(); await state.capturarHuellaCliente(1)
-  state.capturandoHuella.value = false; state.fechaRegistro.value = ''
+  state.capturandoHuella.value = false; state.fechaInicioMembresia.value = ''
   await state.guardar()
   assert.equal(calls.filter(c => c[0] === 'guardar').length, 0)
 })
@@ -543,8 +627,10 @@ test('CheckIn: no ofrece plan exclusivo de alta para renovación', async () => {
     { id: 1, solo_alta: false }, { id: 2, solo_alta: true },
   ] } })
   const state = f.ns.useCheckIn(); await f.mount()
-  assert.equal(state.tiposMembresia.value.length, 1)
-  assert.equal(state.tiposMembresia.value[0].id, 1)
+  state.clienteDetectado.value={id:1};await state.solicitarRenovacion()
+  const renovacion=f.modules.get('./useRenovacion').namespace.useRenovacion()
+  assert.equal(renovacion.planes.value.length, 1)
+  assert.equal(renovacion.planes.value[0].id, 1)
   await f.unmount()
 })
 
@@ -581,20 +667,22 @@ test('CheckIn: formato y etiquetas de todos los estados de membresía', async ()
 test('CheckIn: renovación confirmada, doble clic y liberación al desmontar', async () => {
   let finish, count = 0
   const pending = new Promise(resolve => { finish = resolve })
-  const f = await fixture('composables/useCheckIn.js', { api: { renovarMembresia: async () => { count++; await pending; return { nombre: 'Sintético', fecha_fin_membresia: '2024-12-31' } } } })
+  const f = await fixture('composables/useCheckIn.js', { api: { renovarMembresia: async () => { count++; await pending; return { id:1,nombre: 'Sintético', fecha_fin_membresia: '2024-12-31' } } } })
   const state = f.ns.useCheckIn(); await f.mount()
-  await state.renovar(); assert.equal(count, 0)
+  assert.equal(count, 0)
   await f.listeners.get('logym://checkin')({ payload: { cliente: { id: 1, nombre: 'Sintético' }, resultado: 'duplicada' } })
-  state.solicitarRenovacion(); assert.equal(state.confirmandoRenovacion.value, true)
-  const first = state.renovar(); await state.renovar(); assert.equal(count, 1)
+  await state.solicitarRenovacion()
+  const modal=f.modules.get('./useRenovacion').namespace.useRenovacion()
+  assert.equal(modal.abierta.value,true)
+  const first = modal.confirmar(); await modal.confirmar(); assert.equal(count, 1)
   finish(); await first
-  assert.equal(state.estadoCheckin.value, 'success')
-  assert.equal(state.confirmandoRenovacion.value, false)
-  assert.equal(state.procesandoRenovacion.value, false)
+  await Vue.nextTick()
+  assert.equal(state.clienteDetectado.value.fecha_fin_membresia,'2024-12-31')
+  assert.equal(modal.abierta.value,false);assert.equal(modal.guardando.value,false)
   await f.unmount(); assert.equal(f.calls.at(-1)[1], false)
 })
 
-test('CheckIn: fallos de consulta, listener, catálogo y renovación se muestran', async () => {
+test('CheckIn: fallos de consulta y listener; el catálogo se consulta en el modal común', async () => {
   const f = await fixture('composables/useCheckIn.js', {
     api: { listarTiposMembresia: async () => { throw Error('catálogo simulado') }, renovarMembresia: async () => { throw Error('pago simulado') } },
     ipc: { invoke: async () => { throw Error('IPC simulado') } },
@@ -603,13 +691,12 @@ test('CheckIn: fallos de consulta, listener, catálogo y renovación se muestran
   const state = f.ns.useCheckIn(); await f.mount()
   assert.equal(state.lectorActivo.value, false); assert.equal(state.estadoLector.value, 'no_disponible')
   assert.match(state.mensaje.value, /lector/)
-  state.clienteDetectado.value = { id: 1 }; state.tipoMembresiaId.value = '1'
-  await state.renovar()
-  assert.equal(state.estadoCheckin.value, 'error')
-  assert.equal(state.procesandoRenovacion.value, false)
-  assert.match(state.mensaje.value, /No se pudo renovar la membresía/)
-  assert.ok(!state.mensaje.value.includes('pago simulado'))
-  assert.ok(f.erroresTecnicos.some(args => args.some(a => String(a).includes('pago simulado'))))
+  state.clienteDetectado.value = { id: 1 }
+  await state.solicitarRenovacion()
+  const modal=f.modules.get('./useRenovacion').namespace.useRenovacion()
+  assert.match(modal.error.value,/No se pudieron cargar/)
+  assert.ok(!modal.error.value.includes('catálogo simulado'))
+  assert.ok(f.erroresTecnicos.some(args => args.some(a => String(a).includes('catálogo simulado'))))
   await f.unmount()
 })
 

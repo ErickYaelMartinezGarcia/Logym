@@ -6,7 +6,10 @@
   .page-section { @apply mb-5 rounded-2xl p-6; }
   .section-heading { @apply mb-4 flex items-end justify-between gap-4; }
   .section-title { @apply mt-2 text-xl; }
-  .data-table { @apply w-full border-collapse text-left text-[13px]; }
+  .data-table { @apply w-full border-collapse text-center text-[13px]; }
+  .data-table th, .data-table td { @apply text-center align-middle; }
+  .data-table .actions { @apply justify-center; }
+  table th.table-name, table td.table-name { @apply text-left; }
   .data-table th { @apply px-2 py-3; }
   .data-table td { @apply border-t border-[#292d33] px-2 py-3.5; }
   .data-table .secondary { @apply text-[11px]; }
@@ -92,3 +95,9 @@ button { cursor: pointer; }
 @media (min-width: 900px) { .page-content { padding-left: 7vw; padding-right: 7vw; } }
 @media (max-width: 600px) { .topbar { padding: 0 20px; } .topbar-date { display: none; } .topbar-page { display: none; } .page-content { padding: 30px 20px 55px; } }
 @media (max-width: 800px) { .registration-grid { grid-template-columns: 1fr; } }
+
+.plan-badge{display:inline-block;box-sizing:border-box;width:106px;height:32px;padding:0 9px;border:1px solid #304e73;border-radius:7px;color:#b5d8ff;font-size:12px;font-weight:600;line-height:30px;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.renew-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:108px;min-height:36px;padding:8px 13px;border:1px solid #4c5868;border-radius:8px;background:linear-gradient(180deg,#303947,#252d39);box-shadow:0 2px 3px #0004,inset 0 1px 0 #ffffff0c;color:#eff5ff;font-size:12px;font-weight:650;line-height:18px;white-space:nowrap;cursor:pointer;transition:background .15s,border-color .15s,box-shadow .15s}
+.renew-button::before{content:'↻';font-size:18px;line-height:18px;color:#a9c8f0}
+.renew-button:hover:not(:disabled){background:linear-gradient(180deg,#39475b,#2a3647);border-color:#7697c0;box-shadow:0 3px 7px #0005}
+.renew-button:focus-visible{outline:2px solid #93b9ed;outline-offset:3px}.renew-button:active:not(:disabled){box-shadow:inset 0 2px 4px #0005}.renew-button:disabled{opacity:.45;cursor:not-allowed}

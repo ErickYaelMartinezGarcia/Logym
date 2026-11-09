@@ -12,7 +12,7 @@ function soloNumeros(event, campo) {
 const registro = useRegistroCliente()
 const {
   tiposMembresia, tipoMembresiaId, incluirInscripcion, precioInscripcion,
-  nombre, telefono, fechaRegistro, fechaInicioMembresia, fechaFinMembresia,
+  nombre, telefono, fechaInicioMembresia, fechaFinMembresia,
   telefonoEmergencia,
   sinHuella, template1, template2, capturandoHuella, guardando, mensaje, tipoMensaje, videoRef, canvasRef, fotoBase64,
   camaraActiva, camaraDisponible, iniciarCamara, detenerCamara, capturarFoto, repetirFoto,
@@ -32,8 +32,7 @@ const {
           <label class="field-label">Teléfono del cliente <span>(opcional)</span><input v-model="telefono" @input="soloNumeros($event, 'cliente')" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="5512345678" /></label>
           <label class="field-label">Teléfono de emergencia <span>(opcional)</span><input v-model="telefonoEmergencia" @input="soloNumeros($event, 'emergencia')" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="5512345678" /></label>
         </div>
-        <div class="date-grid">
-          <label class="field-label">Fecha de registro<input v-model="fechaRegistro" type="date" /></label>
+        <div class="date-grid membership-dates">
           <label class="field-label">Inicio de membresía<input v-model="fechaInicioMembresia" type="date" /></label>
           <label class="field-label">Fin de membresía<input v-model="fechaFinMembresia" type="date" /></label>
         </div>
@@ -54,11 +53,8 @@ const {
             <strong class="total-cobro">{{ (((tiposMembresia.find(p => String(p.id) === tipoMembresiaId)?.precio_centavos || 0) + (incluirInscripcion ? precioInscripcion : 0)) / 100).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) }}</strong>
           </div>
         </div>
-        <label class="field-label">Modalidad de registro
-          <select v-model="sinHuella" class="plan-select" :disabled="capturandoHuella || guardando">
-            <option :value="false">Registrar con huella</option>
-            <option :value="true">Registrar sin huella</option>
-          </select>
+        <label class="registration-mode">
+          <input v-model="sinHuella" type="checkbox" :disabled="capturandoHuella || guardando" /> Registrar sin huella
         </label>
         <p v-if="sinHuella" class="muted">No se capturará huella. Sus asistencias requerirán confirmación manual del operador.</p>
         <div v-if="!sinHuella" class="capture-row"><button class="capture-card" :class="{ done: template1 }" :disabled="capturandoHuella || guardando" @click="capturarHuellaCliente(1)"><span class="capture-icon">01</span><span><strong>{{ template1 ? 'Huella guardada' : 'Primera huella' }}</strong><small>{{ template1 ? 'Captura completa' : 'Coloca el dedo en el lector' }}</small></span><b>›</b></button><button class="capture-card" :class="{ done: template2 }" :disabled="!template1 || capturandoHuella || guardando" @click="capturarHuellaCliente(2)"><span class="capture-icon">02</span><span><strong>{{ template2 ? 'Huella confirmada' : 'Confirmación' }}</strong><small>{{ template2 ? 'Captura completa' : 'Repite la misma huella' }}</small></span><b>›</b></button></div>
@@ -77,6 +73,8 @@ const {
 </template>
 
 <style scoped>
+.registration-mode{display:flex;align-items:center;gap:9px;margin:14px 0;font-size:13px}.registration-mode input{width:16px;height:16px;accent-color:#5594d5}
+.date-grid.membership-dates{grid-template-columns:repeat(2,minmax(0,1fr))}@media(max-width:800px){.date-grid.membership-dates{grid-template-columns:1fr}}
 .field-label { display:block; color:#9da3ad; font-size:12px; margin-bottom:16px; }
 .field-label span { color:#6f7680; font-size:10px; }
 .phone-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }

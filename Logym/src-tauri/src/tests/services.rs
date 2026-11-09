@@ -2,6 +2,15 @@ use super::*;
 use crate::test_support::cliente;
 
 #[test]
+fn fecha_alta_siempre_procede_del_backend() {
+    for falsa in ["1900-01-01", "2099-12-31", "", "fecha manipulada"] {
+        let mut datos=cliente(1);datos.fecha_registro=falsa.into();validar_alta(&mut datos).unwrap();
+        assert!(datos.fecha_registro.starts_with(&chrono::Local::now().format("%Y-%m-%d").to_string()));
+        assert_ne!(datos.fecha_registro,falsa);
+    }
+}
+
+#[test]
 fn alta_semanal_ambas_modalidades_cobro_historico_y_fin_inclusivo() {
     use crate::test_support::*;
     let db=db();
@@ -84,7 +93,7 @@ fn alta_rechaza_campos_invalidos_sin_abrir_base_real() {
         ("template","".into()),("template","aa".repeat(399)),("template","aa".repeat(401)),
         ("template","zz".repeat(400)),("template","é".repeat(400)),
         ("foto","data:text/html;base64,PHNjcmlwdD4=".into()),("foto","x".repeat(3_000_001)),
-        ("registro","2023-02-29".into()),("inicio","2024-04-31".into()),("fin","2023-01-01".into()),
+        ("inicio","2024-04-31".into()),("fin","2023-01-01".into()),
     ];
     for (field,value) in cases {
         let mut d=cliente(1);

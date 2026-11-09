@@ -4,11 +4,14 @@
  * La primera confirmación se realiza desde la tabla; la segunda exige escribir ELIMINAR.
  * Ninguna operación destructiva se ejecuta antes de confirmar ambas etapas.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { listen } from '@tauri-apps/api/event'
+import { useRenovacion } from '../composables/useRenovacion'
 import AppShell from '../components/AppShell.vue'
 import { listarClientesMembresia, actualizarCliente, establecerClienteActivo, eliminarClienteDefinitivamente } from '../services/tauriApi'
 
 const clientes = ref([])
+const { abrir: abrirRenovacion } = useRenovacion()
 const busqueda = ref('')
 const cargando = ref(false)
 const mensaje = ref('')
@@ -79,7 +82,21 @@ async function confirmarEliminacion() {
   } catch (e) { error.value = String(e) }
   finally { procesando.value = false }
 }
-onMounted(cargar)
+let desuscribir
+onMounted(async () => {
+  try {
+    desuscribir = await listen('logym://datos-actualizados', async ({ payload }) => {
+      if (!['cliente', 'membresia'].includes(payload)) return
+      await cargar()
+      if (editando.value) {
+        const fresco = clientes.value.find(c => c.id === editando.value.id)
+        if (fresco) for (const k of ['fecha_inicio_membresia','fecha_fin_membresia','tipo_membresia']) editando.value[k] = fresco[k]
+      }
+    })
+  } catch (e) { console.error('Suscripción de clientes:', e) }
+  await cargar()
+})
+onBeforeUnmount(() => desuscribir?.())
 </script>
 
 <template>
@@ -97,15 +114,16 @@ onMounted(cargar)
       <p v-if="cargando" class="muted">Cargando clientes...</p>
       <div class="table-scroll surface">
         <table class="data-table">
-          <thead><tr><th>Cliente</th><th>Teléfono</th><th>Membresía</th><th>Acceso</th><th>Acciones</th></tr></thead>
+          <thead><tr><th class="table-name">Cliente</th><th>Teléfono</th><th>Membresía</th><th>Acceso</th><th>Acciones</th></tr></thead>
           <tbody>
             <tr v-for="c in clientesFiltrados" :key="c.id">
-              <td><strong>{{ c.nombre }}</strong><div class="muted">ID #{{ c.id }}</div></td>
+              <td class="table-name"><strong>{{ c.nombre }}</strong><div class="muted">ID #{{ c.id }}</div></td>
               <td>{{ c.telefono || '—' }}</td>
-              <td><span class="inline-flex rounded-md bg-[#ee2046]/10 px-2 py-1 text-xs font-semibold text-[#ff6b85]">{{ c.tipo_membresia }}</span><div class="mt-1 text-xs text-zinc-400">Hasta {{ c.fecha_fin_membresia || 'sin fecha' }}</div></td>
+              <td><span class="plan-badge" :title="c.tipo_membresia">{{ c.tipo_membresia }}</span><div class="mt-1 text-xs text-zinc-400">Hasta {{ c.fecha_fin_membresia || 'sin fecha' }}</div></td>
               <td>{{ c.activo ? 'Activo' : 'Inactivo' }}</td>
               <td><div class="actions">
                 <button class="action" @click="editar(c)">Editar</button>
+                <button v-if="c.activo" class="renew-button" @click="abrirRenovacion(c)">Renovar</button>
                 <button class="action" :disabled="procesando" @click="cambiarEstado(c)">{{ c.activo ? 'Desactivar' : 'Reactivar' }}</button>
                 <button class="action danger" @click="solicitarEliminacion(c)">Eliminar</button>
               </div></td>
@@ -117,7 +135,8 @@ onMounted(cargar)
       <div v-if="editando" class="overlay" @click.self="editando = null">
         <form class="dialog surface" @submit.prevent="guardar">
           <h2>Editar cliente #{{ editando.id }}</h2>
-          <p class="text-sm text-zinc-400">Plan actual: <strong class="text-[#ff6b85]">{{ editando.tipo_membresia }}</strong>. Para cambiarlo, utiliza la renovación de membresía.</p>
+          <p class="text-sm text-zinc-400">Plan actual: <strong class="plan-badge" :title="editando.tipo_membresia">{{ editando.tipo_membresia }}</strong>.</p>
+          <button v-if="editando.activo" type="button" class="renew-button" :disabled="procesando" @click="abrirRenovacion(editando)">Renovar membresía</button>
           <label>Nombre<input v-model="editando.nombre" class="control" required /></label>
           <label>Teléfono<input v-model="editando.telefono" class="control" /></label>
           <label>Teléfono de emergencia<input v-model="editando.telefono_emergencia" class="control" /></label>
@@ -141,5 +160,5 @@ onMounted(cargar)
 </template>
 
 <style scoped>
-.clientes-admin{display:grid;gap:16px;padding-bottom:28px}.toolbar,.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.toolbar{justify-content:space-between}.control{display:block;width:100%;min-width:0;padding:11px 13px;border:1px solid #454b54;border-radius:9px;background:#15181d;color:#fff}.toolbar .control{max-width:390px}.action{border:1px solid #454b54;border-radius:8px;background:#242930;color:#fff;padding:9px 12px;cursor:pointer}.action:disabled{opacity:.45;cursor:not-allowed}.primary{background:#266345}.danger{border-color:#a52e4b;color:#ff9eb3}.table-scroll{overflow-x:auto;padding:12px}.data-table{width:100%;border-collapse:collapse}.data-table td,.data-table th{padding:14px;text-align:left;border-bottom:1px solid #333943}.feedback{padding:12px;border-radius:8px}.success{color:#8ce8b8}.failure{color:#ff9eb3}.overlay{position:fixed;inset:0;z-index:100;background:#000b;display:grid;place-items:center;padding:20px}.dialog{width:min(520px,100%);max-height:90vh;overflow:auto;display:grid;gap:15px;padding:28px;border-radius:18px}.dialog label{display:grid;gap:7px}.dialog .actions{justify-content:flex-end}@media(max-width:700px){.toolbar .control{max-width:none}.dialog{padding:20px}}
+.clientes-admin{display:grid;gap:16px;padding-bottom:28px}.toolbar,.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.toolbar{justify-content:space-between}.control{display:block;width:100%;min-width:0;padding:11px 13px;border:1px solid #454b54;border-radius:9px;background:#15181d;color:#fff}.toolbar .control{max-width:390px}.action{border:1px solid #454b54;border-radius:8px;background:#242930;color:#fff;padding:9px 12px;cursor:pointer}.action:disabled{opacity:.45;cursor:not-allowed}.primary{background:#266345}.danger{border-color:#a52e4b;color:#ff9eb3}.table-scroll{overflow-x:auto;padding:12px}.data-table{width:100%;border-collapse:collapse}.data-table td,.data-table th{padding:14px;border-bottom:1px solid #333943}.feedback{padding:12px;border-radius:8px}.success{color:#8ce8b8}.failure{color:#ff9eb3}.overlay{position:fixed;inset:0;z-index:100;background:#000b;display:grid;place-items:center;padding:20px}.dialog{width:min(520px,100%);max-height:90vh;overflow:auto;display:grid;gap:15px;padding:28px;border-radius:18px}.dialog label{display:grid;gap:7px}.dialog .actions{justify-content:flex-end}@media(max-width:700px){.toolbar .control{max-width:none}.dialog{padding:20px}}
 </style>

@@ -2,8 +2,10 @@ import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/tauri'
 import { useRouter } from 'vue-router'
-import { mensajeErrorAsistencia, mensajeErrorRenovacion } from '../services/mensajesLector'
-import { pausarLectorGlobal, renovarMembresia, listarTiposMembresia, buscarClientesCheckin, registrarAsistencia } from '../services/tauriApi'
+import { mensajeErrorAsistencia } from '../services/mensajesLector'
+import { pausarLectorGlobal, buscarClientesCheckin, registrarAsistencia } from '../services/tauriApi'
+
+import { useRenovacion } from './useRenovacion'
 
 /**
  * Vista del lector global. El backend captura y registra asistencias incluso
@@ -11,15 +13,11 @@ import { pausarLectorGlobal, renovarMembresia, listarTiposMembresia, buscarClien
  */
 export function useCheckIn() {
   const router = useRouter()
-  const tiposMembresia = ref([])
-  const tipoMembresiaId = ref('')
   const mensaje = ref('Coloca tu huella para validar tu acceso')
   const estadoCheckin = ref('idle')
   const cargando = ref(false)
-  const procesandoRenovacion = ref(false)
   const clienteDetectado = ref(null)
   const modalAbierta = ref(false)
-  const confirmandoRenovacion = ref(false)
   const lectorActivo = ref(false)
   const estadoLector = ref('inicializando')
   const consultaManual = ref('')
@@ -73,7 +71,6 @@ export function useCheckIn() {
     modalManual.value = true
     modalAbierta.value = true
     asistenciaManualRegistrada.value = false
-    confirmandoRenovacion.value = false
     estadoCheckin.value = 'idle'
     mensaje.value = 'Verifica la fotografía y los datos del cliente antes de registrar su asistencia.'
   }
@@ -176,7 +173,6 @@ export function useCheckIn() {
     const { cliente, resultado } = colaLecturas.shift()
     lecturasPendientes.value = colaLecturas.length
     modalManual.value = false
-    confirmandoRenovacion.value = false
     clienteDetectado.value = cliente
     modalAbierta.value = true
     if (resultado === 'registrada') {
@@ -205,7 +201,6 @@ export function useCheckIn() {
     modalManual.value = false
     asistenciaManualRegistrada.value = false
     modalAbierta.value = false
-    confirmandoRenovacion.value = false
     clienteDetectado.value = null
     estadoCheckin.value = 'idle'
     mensaje.value = 'Coloca tu huella para validar tu acceso'
@@ -216,36 +211,20 @@ export function useCheckIn() {
       await pausarLectorGlobal(false)
     }
   }
-  function solicitarRenovacion() { if (!modalManual.value) confirmandoRenovacion.value = true }
-  async function renovar() {
-    if (modalManual.value || !clienteDetectado.value || procesandoRenovacion.value || !tipoMembresiaId.value) return
-    procesandoRenovacion.value = true
-    try {
-      clienteDetectado.value = await renovarMembresia(clienteDetectado.value.id, Number(tipoMembresiaId.value))
-      estadoCheckin.value = 'success'
-      confirmandoRenovacion.value = false
-      mensaje.value = `Membresía renovada para ${clienteDetectado.value.nombre}. Vigente hasta ${formatearFecha(clienteDetectado.value.fecha_fin_membresia)}.`
-    } catch (error) {
-      console.error('Error al renovar desde check-in:', error)
-      estadoCheckin.value = 'error'
-      mensaje.value = mensajeErrorRenovacion(error)
-    } finally {
-      procesandoRenovacion.value = false
+  const renovacion = useRenovacion()
+  const solicitarRenovacion = () => renovacion.abrir(clienteDetectado.value)
+  watch(renovacion.ultimoResultado, resultado => {
+    if (resultado && clienteDetectado.value?.id === resultado.id) {
+      clienteDetectado.value = resultado
+      if (clienteManual.value?.id === resultado.id) clienteManual.value = resultado
     }
-  }
+  })
   onMounted(async () => {
     try {
       dejarDeEscucharEstado = await listen('logym://lector-estado', ({ payload }) => actualizarEstadoLector(payload))
     } catch (error) { console.error('No se pudo escuchar el estado del lector:', error) }
     await consultarEstadoLector()
     if (!desmontado) consultaLectorTimer = setInterval(consultarEstadoLector, 2000)
-    try {
-      tiposMembresia.value = (await listarTiposMembresia()).filter(plan => !plan.solo_alta)
-      if (tiposMembresia.value.length) tipoMembresiaId.value = String(tiposMembresia.value[0].id)
-    } catch (error) {
-      console.error('Error al cargar membresías en check-in:', error)
-      mensaje.value = 'No se pudieron cargar las membresías. Intenta nuevamente.'
-    }
     try { dejarDeEscuchar = await listen('logym://checkin', recibirLectura) }
     catch (error) {
       console.error('Error al escuchar el lector:', error)
@@ -266,9 +245,8 @@ export function useCheckIn() {
     consultaManual, resultadosManual, clienteManual, buscandoManual, registrandoManual, mensajeManual,
     busquedaAbierta, modalManual, asistenciaManualRegistrada, lecturasPendientes,
     buscarManual, seleccionarManual, confirmarManual, cancelarBusqueda,
-    tiposMembresia, tipoMembresiaId,
-    router, mensaje, estadoCheckin, cargando, procesandoRenovacion, clienteDetectado,
-    modalAbierta, confirmandoRenovacion, lectorActivo, estadoLector, formatearFecha, etiquetaEstado,
-    diasRestantes, capturarAcceso, cerrarModal, solicitarRenovacion, renovar
+    router, mensaje, estadoCheckin, cargando, clienteDetectado,
+    modalAbierta, lectorActivo, estadoLector, formatearFecha, etiquetaEstado,
+    diasRestantes, capturarAcceso, cerrarModal, solicitarRenovacion
   }
 }

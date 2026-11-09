@@ -1,5 +1,41 @@
     use super::*;
     #[test]
+    fn categorias_financieras_con_duracion_persistida_sin_sumar_semanales_dos_veces() {
+        use crate::test_support::*;
+        let db=db();let id=vigente(&db);
+        db.execute("INSERT INTO tipos_membresia(nombre,duracion_meses,duracion_dias,precio_centavos) VALUES('Nombre arbitrario',1,7,12000)",[]).unwrap();let p=plan(&db,"Nombre arbitrario");
+        let mut datos=cliente(p);datos.incluir_inscripcion=false;crate::repositories::guardar_cliente(&db,datos).unwrap();
+        crate::repositories::renovar_membresia_operacion(&db,id,p,&"c".repeat(32)).unwrap();
+        crate::visitas::registrar(&db,&"d".repeat(32),"").unwrap();
+        // Un pago histórico sin duración conserva tipo e importe, nunca se
+        // clasifica a partir del nombre o de la duración actual del catálogo.
+        db.execute("UPDATE pagos SET duracion_dias=NULL,duracion_meses=NULL WHERE cliente_id=?1 AND tipo='alta'",[id]).unwrap();
+        db.execute("UPDATE tipos_membresia SET nombre='Mensual renombrado',duracion_dias=30,precio_centavos=99000 WHERE id=?1",[p]).unwrap();
+        let hoy=chrono::Local::now().format("%Y-%m-%d").to_string();
+        for (cat,importe,n) in [("todos",79000,4),("altas",62000,2),("renovaciones",12000,1),("visitas",5000,1),("semanales",24000,2)] {
+            let r=ingresos_rango_categoria(&db,&hoy,&hoy,cat).unwrap();
+            assert_eq!((r.total_centavos,r.numero_pagos,r.total_periodo_centavos),(importe,n,79000));
+            assert_eq!(r.serie.iter().map(|p|p.total_centavos).sum::<i64>(),importe);
+            assert_eq!(r.movimientos.iter().map(|m|m.total_centavos).sum::<i64>(),importe);
+        }
+        let vacio=ingresos_rango_categoria(&db,"2000-01-01","2000-01-01","todos").unwrap();assert_eq!(vacio.total_centavos,0);
+        assert!(ingresos_rango_categoria(&db,&hoy,&hoy,"inventada").is_err());
+    }
+
+    #[test]
+    fn siete_dias_locales_completos_con_ceros_y_visitas_sin_duplicados() {
+        use crate::test_support::*;
+        let db=db();let id=vigente(&db);
+        db.execute("INSERT INTO asistencias(cliente_id,fecha_hora) VALUES(?1,datetime('now','localtime','-6 days'))",[id]).unwrap();
+        db.execute("INSERT INTO asistencias(cliente_id,fecha_hora) VALUES(?1,datetime('now','localtime','-7 days'))",[id]).unwrap();
+        crate::visitas::registrar(&db,&"e".repeat(32),"").unwrap();
+        let datos=asistencias_diarias(&db,"semana").unwrap();assert_eq!(datos.len(),7);
+        assert_eq!(datos.iter().map(|d|d.total).collect::<Vec<_>>(),vec![1,0,0,0,0,0,1]);
+        let hoy=chrono::Local::now().date_naive();
+        for (i,d) in datos.iter().enumerate(){assert_eq!(d.fecha,(hoy-chrono::Duration::days(6-i as i64)).to_string());}
+        assert_eq!(asistencias_periodo(&db,"semana").unwrap(),2);
+    }
+    #[test]
     fn historical_revenue_ignores_catalog_price_changes() {
         let db = crate::test_support::db();
         crate::test_support::vigente(&db);

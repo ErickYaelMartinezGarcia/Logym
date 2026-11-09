@@ -17,7 +17,7 @@ export const buscarClientePorHuella = () => ejecutar('buscar_cliente_por_huella'
 export const checkIn = () => ejecutar('check_in')
 export const capturarHuella = () => ejecutar('capturar_huella')
 export const registrarAsistencia = (clienteId) => ejecutar('registrar_asistencia', { clienteId })
-export const renovarMembresia = (clienteId, tipoMembresiaId) => ejecutar('renovar_membresia', {datos: { clienteId, tipoMembresiaId }})
+export const renovarMembresia = (clienteId, tipoMembresiaId, operacionId) => ejecutar('renovar_membresia', {datos: { clienteId, tipoMembresiaId, operacionId }})
 export const obtenerMetricasDashboard = () => ejecutar('obtener_metricas')
 export const compararHuella = (t1, t2) => ejecutar('comparar_huella', {
   t1: t1,
@@ -32,7 +32,7 @@ export const pausarLectorGlobal = (pausado) => ejecutar('pausar_lector_global', 
 
 export const listarTiposMembresia = () => ejecutar('listar_tipos_membresia')
 export const obtenerPrecioInscripcion = () => ejecutar('obtener_precio_inscripcion')
-export const reporteFinanciero = (fechaInicio, fechaFin, password) => ejecutar('reporte_financiero', { fechaInicio, fechaFin, password })
+export const reporteFinanciero = (fechaInicio, fechaFin, password, categoria = 'todos') => ejecutar('reporte_financiero', { fechaInicio, fechaFin, password, categoria })
 export const resumenIngresos = (periodo, password) => ejecutar('resumen_ingresos', { periodo, password })
 
 export const adminConfigurado = () => ejecutar('admin_configurado')

@@ -2,7 +2,7 @@ import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { capturarHuella, compararHuella, guardarCliente, inicializarBaseDeDatos, pausarLectorGlobal, listarTiposMembresia, obtenerPrecioInscripcion } from '../services/tauriApi'
 import { useCamera } from './useCamera'
 import { mensajeErrorLector, mensajeErrorAlta } from '../services/mensajesLector'
-import { fechaFinPlan } from '../services/duracionPlanes'
+import { fechaFinPlan, ordenarPlanes } from '../services/duracionPlanes'
 
 export function useRegistroCliente() {
   const tiposMembresia = ref([])
@@ -103,8 +103,8 @@ export function useRegistroCliente() {
       mostrarMensaje(sinHuella.value ? 'Completa el nombre del miembro.' : 'Completa el nombre y las dos capturas de huella.', 'error')
       return
     }
-    if (!fechaRegistro.value || !fechaInicioMembresia.value || !fechaFinMembresia.value) {
-      mostrarMensaje('Captura las fechas de registro, inicio y fin de membresía.', 'error')
+    if (!fechaInicioMembresia.value || !fechaFinMembresia.value) {
+      mostrarMensaje('Captura las fechas de inicio y fin de membresía.', 'error')
       return
     }
     if (fechaFinMembresia.value < fechaInicioMembresia.value) {
@@ -134,7 +134,6 @@ export function useRegistroCliente() {
         incluirInscripcion: incluirInscripcion.value,
         telefono: telefono.value.trim(),
         telefonoEmergencia: telefonoEmergencia.value.trim(),
-        fechaRegistro: fechaRegistro.value,
         fechaInicioMembresia: fechaInicioMembresia.value,
         fechaFinMembresia: fechaFinMembresia.value,
         fotoBase64: camera.fotoBase64.value,
@@ -168,7 +167,7 @@ export function useRegistroCliente() {
     fechaFinMembresia.value = sumarDias(hoy, 30)
     try {
       await inicializarBaseDeDatos()
-      tiposMembresia.value = await listarTiposMembresia()
+      tiposMembresia.value = ordenarPlanes(await listarTiposMembresia())
       precioInscripcion.value = await obtenerPrecioInscripcion()
       const mensual = tiposMembresia.value.find(p => p.nombre.trim().toLocaleLowerCase('es-MX') === 'mensual')
       if (mensual) tipoMembresiaId.value = String(mensual.id)
