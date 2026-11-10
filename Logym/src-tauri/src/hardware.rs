@@ -12,13 +12,15 @@ struct Equipo {
     serie: String,
 }
 
-fn normalizar(valor: &str) -> Result<String, String> {
+fn normalizar(valor: &str, es_fabricante: bool) -> Result<String, String> {
     if !valor.is_ascii() || valor.bytes().any(|b| b.is_ascii_control() && !b.is_ascii_whitespace()) {
         return Err("SMBIOS contiene caracteres no admitidos".into());
     }
     let texto = valor.split_ascii_whitespace().collect::<Vec<_>>().join(" ").to_ascii_uppercase();
     let simple: String = texto.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-    if simple.len() < 3 || simple.bytes().all(|b| b == simple.as_bytes()[0]) ||
+    // Solo el fabricante HP admite dos caracteres; producto y serie conservan su mínimo.
+    let fabricante_hp = es_fabricante && texto == "HP";
+    if (simple.len() < 3 && !fabricante_hp) || simple.bytes().all(|b| b == simple.as_bytes()[0]) ||
         ["TOBEFILLEDBYOEM", "DEFAULTSTRING", "SYSTEMSERIALNUMBER", "BASEBOARDSERIALNUMBER",
          "SERIALNUMBER", "UNKNOWN", "NONE", "NOTAPPLICABLE", "NOTSPECIFIED", "NA", "OEM",
          "SYSTEMPRODUCTNAME", "BASEBOARDPRODUCTNAME", "SYSTEMMANUFACTURER", "BASEBOARDMANUFACTURER",
@@ -36,9 +38,9 @@ fn identidad(equipo: Equipo) -> Result<String, String> {
         uuid == [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15] {
         return Err("UUID SMBIOS vacío o genérico; no es posible vincular esta PC".into());
     }
-    let fabricante = normalizar(&equipo.fabricante)?;
-    let modelo = normalizar(&equipo.modelo)?;
-    let serie = normalizar(&equipo.serie)?;
+    let fabricante = normalizar(&equipo.fabricante, true)?;
+    let modelo = normalizar(&equipo.modelo, false)?;
+    let serie = normalizar(&equipo.serie, false)?;
     if serie.chars().filter(|c| c.is_ascii_alphanumeric()).count() < 4 {
         return Err("Número de serie de placa insuficiente".into());
     }

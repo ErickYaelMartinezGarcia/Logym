@@ -5,6 +5,64 @@ fn equipo() -> Equipo {
         fabricante: "Synthetic Vendor".into(), modelo: "Synthetic Board X2".into(), serie: "SYNTH-BOARD-4829".into() }
 }
 
+#[test]
+fn hp_y_fabricantes_validos_conservan_normalizacion() {
+    for fabricante in ["HP", "Dell", "Lenovo", "ASUS", "Hewlett-Packard"] {
+        let mut original = equipo(); original.fabricante = fabricante.into();
+        let esperado = identidad(original).unwrap();
+        let mut variante = equipo(); variante.fabricante = format!(" \t{} \r\n", fabricante.to_ascii_lowercase());
+        assert_eq!(identidad(variante).unwrap(), esperado, "{fabricante}");
+    }
+}
+
+#[test]
+fn hp_no_amplia_excepcion_a_genericos_ni_otros_fabricantes() {
+    for fabricante in ["", " ", "H", "AB", "AA", "NA", "N/A", "OEM", "Unknown",
+        "Default string", "To be filled by O.E.M.", "System Manufacturer", "000000", "AAAAAA",
+        "H-P", "H P", "HP!", "HP\0", "HＰ", "\u{a0}HP"] {
+        let mut e = equipo(); e.fabricante = fabricante.into();
+        assert!(identidad(e).is_err(), "{fabricante:?}");
+    }
+}
+
+#[test]
+fn hp_no_relaja_validacion_producto_serie_ni_uuid() {
+    for valor in ["", "HP", "AB", "AAA", "N/A", "Unknown", "Default string", "To be filled by O.E.M."] {
+        let mut e = equipo(); e.fabricante = "HP".into(); e.modelo = valor.into();
+        assert!(identidad(e).is_err(), "producto {valor:?}");
+        let mut e = equipo(); e.fabricante = "HP".into(); e.serie = valor.into();
+        assert!(identidad(e).is_err(), "serie {valor:?}");
+    }
+    let mut corta = equipo(); corta.fabricante = "HP".into(); corta.serie = "A1B".into();
+    assert!(identidad(corta).unwrap_err().contains("serie de placa insuficiente"));
+    for uuid in [[0;16], [255;16], [17;16],
+        [3,0,2,0,4,0,5,0,0,6,0,7,0,8,0,9],
+        [0,2,0,3,0,4,0,5,0,6,0,7,0,8,0,9],
+        [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]] {
+        let mut e = equipo(); e.fabricante = "HP".into(); e.uuid = uuid;
+        assert!(identidad(e).unwrap_err().contains("UUID SMBIOS"));
+    }
+}
+
+#[test]
+fn hp_coincide_en_smbios_y_cim_sin_cambiar_identidad() {
+    let mut e = equipo(); e.fabricante = "HP".into();
+    let esperado = identidad(e).unwrap();
+    let mut raw = tabla("SSD", "Windows");
+    let fabricante = b"Synthetic Vendor\0";
+    let inicio = raw.windows(fabricante.len()).position(|v| v == fabricante).unwrap();
+    raw.splice(inicio..inicio + fabricante.len(), b"HP\0".iter().copied());
+    let longitud = (raw.len() - 8) as u32; raw[4..8].copy_from_slice(&longitud.to_le_bytes());
+    let mut lecturas = 0;
+    assert_eq!(solicitud_con(|| { lecturas += 1; Ok(raw.clone()) }).unwrap(), esperado);
+    assert_eq!(lecturas, 2);
+    let mut cim: serde_json::Value = serde_json::from_slice(&cim_fixture()).unwrap();
+    for muestra in cim.as_array_mut().unwrap() { muestra["placas"][0]["fabricante"] = " hp ".into(); }
+    let json = serde_json::to_vec(&cim).unwrap();
+    assert_eq!(interpretar_cim(&json).unwrap(), esperado);
+    assert_eq!(resolver(|| Err("SMBIOS no disponible".into()), || interpretar_cim(&json)).unwrap(), esperado);
+}
+
 fn tabla(disco: &str, windows: &str) -> Vec<u8> {
     let mut sys = vec![0u8;25]; sys[0]=1; sys[1]=25;
     let mut uuid=equipo().uuid;uuid[..4].reverse();uuid[4..6].reverse();uuid[6..8].reverse();sys[8..24].copy_from_slice(&uuid);
