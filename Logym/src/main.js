@@ -1,6 +1,5 @@
 import { createApp } from 'vue'
-import App from './App.vue'
-import router from './router'
-import './style.css'
+import DemoApp from './DemoApp.vue'
 
-createApp(App).use(router).mount('#app')
+// Web-only commercial demo. No Tauri, Rust, SQLCipher or licensing code is imported.
+createApp(DemoApp).mount('#app')
