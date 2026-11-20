@@ -12,7 +12,7 @@ export function useCheckIn() {
   const router = useRouter()
   const tiposMembresia = ref([])
   const tipoMembresiaId = ref('')
-  const mensaje = ref('Coloca tu huella para validar tu acceso')
+  const mensaje = ref('Presiona el botón para simular una entrada')
   const estadoCheckin = ref('idle')
   const cargando = ref(false)
   const procesandoRenovacion = ref(false)
@@ -86,15 +86,23 @@ export function useCheckIn() {
     }
   }
   async function capturarAcceso() {
-    // El servicio Rust ya está escuchando; no lanzar una segunda captura.
-    mensaje.value = 'El lector permanece activo. Coloca tu huella en el sensor.'
+    // Exclusivo de demo/vercel: simular un check-in en la interfaz original.
+    cargando.value = true
+    try {
+      const { listarClientesMembresia } = await import('../services/tauriApi')
+      const clientes = await listarClientesMembresia()
+      const cliente = clientes.find(c => ['activa','por_vencer'].includes(c.estado_membresia)) || clientes[0]
+      if (!cliente) { mensaje.value = 'No hay clientes de demostración.'; return }
+      await invoke('demo_checkin', { clienteId: cliente.id })
+    } catch (error) { mensaje.value = 'No se pudo simular la entrada: ' + String(error) }
+    finally { cargando.value = false }
   }
   async function cerrarModal() {
     modalAbierta.value = false
     confirmandoRenovacion.value = false
     clienteDetectado.value = null
     estadoCheckin.value = 'idle'
-    mensaje.value = 'Coloca tu huella para validar tu acceso'
+    mensaje.value = 'Presiona el botón para simular una entrada'
     await pausarLectorGlobal(false)
   }
   function solicitarRenovacion() { confirmandoRenovacion.value = true }
