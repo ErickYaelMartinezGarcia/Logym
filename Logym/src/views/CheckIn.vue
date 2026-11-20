@@ -16,7 +16,7 @@ const {
       <section class="checkin-copy">
         <p class="eyebrow">CONTROL DE ACCESO / 00</p>
         <h1 class="page-title">Listo para<br><span class="accent-text">entrenar?</span></h1>
-        <p class="muted checkin-copy__description">Identifica tu huella y entra a VIRTUS sin filas, sin tarjetas y sin
+        <p class="muted checkin-copy__description">Simula un acceso a VIRTUS sin filas, sin tarjetas y sin
           complicaciones.</p>
         <div class="neon-line checkin-copy__line"></div>
       </section>
@@ -27,11 +27,11 @@ const {
         </div>
         <div class="reader-status"><span class="reader-status__dot"
             :class="{ 'reader-status__dot--active': lectorActivo }"></span>
-            <span>{{ lectorActivo ? 'Lector Hamster Pro20 · listo' : estadoLector === 'no_disponible' ? 'Lector no disponible' : estadoLector === 'recuperando' ? 'Recuperando lector...' : 'Iniciando lector...' }}</span></div>
+            <span>{{ lectorActivo ? 'Lector virtual · demo' : estadoLector === 'no_disponible' ? 'Lector no disponible' : estadoLector === 'recuperando' ? 'Recuperando lector...' : 'Iniciando lector...' }}</span></div>
         <div class="checkin-status" :class="`checkin-status--${estadoCheckin}`">
           <p class="checkin-message">{{ mensaje }}</p>
         </div> <button class="text-button text-button--secondary" :disabled="cargando" @click="capturarAcceso(true)">{{
-          cargando ? 'Leyendo dispositivo...' : 'Capturar huella' }}</button><button class="text-button"
+          cargando ? 'Simulando entrada...' : 'Simular check-in' }}</button><button class="text-button"
           @click="router.push('/registro')">¿Nuevo miembro? Regístralo aquí</button>
         <div v-if="modalAbierta && clienteDetectado" class="cliente-modal-backdrop" @click.self="cerrarModal">
           <div class="cliente-modal" :class="{
