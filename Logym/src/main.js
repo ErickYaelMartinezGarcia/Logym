@@ -1,5 +1,7 @@
 import { createApp } from 'vue'
-import DemoApp from './DemoApp.vue'
+import DemoRoot from './DemoRoot.vue'
+import router from './router'
+import './style.css'
 
-// Web-only commercial demo. No Tauri, Rust, SQLCipher or licensing code is imported.
-createApp(DemoApp).mount('#app')
+// Vistas y Tailwind originales; solo el origen de datos es una simulación local.
+createApp(DemoRoot).use(router).mount('#app')
